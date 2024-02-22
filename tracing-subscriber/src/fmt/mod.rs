@@ -731,6 +731,13 @@ where
         }
     }
 
+    pub fn with_extra_fields(self, display_extra_fields: bool) -> CollectorBuilder<N, format::Format<L, T>, F, W> {
+        CollectorBuilder {
+            inner: self.inner.with_extra_fields(display_extra_fields),
+            ..self
+        }
+    }
+
     /// Sets the collector being built to use a less verbose formatter.
     ///
     /// See [`format::Compact`] for details.
@@ -1037,6 +1044,17 @@ impl<N, E, F, W> CollectorBuilder<N, E, F, W> {
         CollectorBuilder {
             filter: self.filter,
             inner: self.inner.event_format(fmt_event),
+        }
+    }
+
+    pub fn extra_fields(self, fields: &[(&'static str, &'static str)]) -> CollectorBuilder<N, E, F, W>
+    where
+        N: for<'writer> FormatFields<'writer> + 'static,
+        W: for<'writer> MakeWriter<'writer> + 'static,
+    {
+        CollectorBuilder {
+            filter: self.filter,
+            inner: self.inner.extra_fields(fields),
         }
     }
 

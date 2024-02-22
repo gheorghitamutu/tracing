@@ -69,6 +69,7 @@ pub struct Subscriber<C, N = format::DefaultFields, E = format::Format, W = fn()
     fmt_span: format::FmtSpanConfig,
     is_ansi: bool,
     log_internal_errors: bool,
+    extra_fields: Vec<(&'static str, &'static str)>,
     _inner: PhantomData<fn(C)>,
 }
 
@@ -119,6 +120,7 @@ where
             make_writer: self.make_writer,
             is_ansi: self.is_ansi,
             log_internal_errors: self.log_internal_errors,
+            extra_fields: self.extra_fields,
             _inner: self._inner,
         }
     }
@@ -149,6 +151,7 @@ where
             make_writer: self.make_writer,
             is_ansi: self.is_ansi,
             log_internal_errors: self.log_internal_errors,
+            extra_fields: self.extra_fields,
             _inner: self._inner,
         }
     }
@@ -185,6 +188,7 @@ impl<C, N, E, W> Subscriber<C, N, E, W> {
             fmt_span: self.fmt_span,
             is_ansi: self.is_ansi,
             log_internal_errors: self.log_internal_errors,
+            extra_fields: self.extra_fields,
             make_writer,
             _inner: self._inner,
         }
@@ -269,6 +273,7 @@ impl<C, N, E, W> Subscriber<C, N, E, W> {
             fmt_span: self.fmt_span,
             is_ansi: self.is_ansi,
             log_internal_errors: self.log_internal_errors,
+            extra_fields: self.extra_fields,
             make_writer: TestWriter::default(),
             _inner: self._inner,
         }
@@ -365,6 +370,7 @@ impl<C, N, E, W> Subscriber<C, N, E, W> {
             fmt_span: self.fmt_span,
             is_ansi: self.is_ansi,
             log_internal_errors: self.log_internal_errors,
+            extra_fields: self.extra_fields,
             make_writer: f(self.make_writer),
             _inner: self._inner,
         }
@@ -397,6 +403,7 @@ where
             make_writer: self.make_writer,
             is_ansi: self.is_ansi,
             log_internal_errors: self.log_internal_errors,
+            extra_fields: self.extra_fields,
             _inner: self._inner,
         }
     }
@@ -410,6 +417,7 @@ where
             make_writer: self.make_writer,
             is_ansi: self.is_ansi,
             log_internal_errors: self.log_internal_errors,
+            extra_fields: self.extra_fields,
             _inner: self._inner,
         }
     }
@@ -530,6 +538,13 @@ where
         }
     }
 
+    pub fn with_extra_fields(self, display_extra_fields: bool) -> Subscriber<C, N, format::Format<L, T>, W> {
+        Subscriber {
+            fmt_event: self.fmt_event.with_extra_fields(display_extra_fields),
+            ..self
+        }
+    }
+
     /// Sets the subscriber being built to use a [less verbose formatter](format::Compact).
     pub fn compact(self) -> Subscriber<C, N, format::Format<format::Compact, T>, W>
     where
@@ -542,6 +557,7 @@ where
             make_writer: self.make_writer,
             is_ansi: self.is_ansi,
             log_internal_errors: self.log_internal_errors,
+            extra_fields: self.extra_fields,
             _inner: self._inner,
         }
     }
@@ -557,6 +573,7 @@ where
             make_writer: self.make_writer,
             is_ansi: self.is_ansi,
             log_internal_errors: self.log_internal_errors,
+            extra_fields: self.extra_fields,
             _inner: self._inner,
         }
     }
@@ -587,6 +604,7 @@ where
             // always disable ANSI escapes in JSON mode!
             is_ansi: false,
             log_internal_errors: self.log_internal_errors,
+            extra_fields: self.extra_fields,
             _inner: self._inner,
         }
     }
@@ -641,6 +659,19 @@ impl<C, T, W> Subscriber<C, format::JsonFields, format::Format<format::Json, T>,
 }
 
 impl<C, N, E, W> Subscriber<C, N, E, W> {
+    pub fn extra_fields(self, fields: &[(&'static str, &'static str)]) -> Subscriber<C, N, E, W> {
+        Subscriber {
+            fmt_event: self.fmt_event,
+            fmt_fields: self.fmt_fields,
+            fmt_span: self.fmt_span,
+            make_writer: self.make_writer,
+            is_ansi: self.is_ansi,
+            log_internal_errors: self.log_internal_errors,
+            extra_fields: Vec::from(fields),
+            _inner: self._inner,
+        }
+    }
+
     /// Sets the field formatter that the subscriber being built will use to record
     /// fields.
     pub fn fmt_fields<N2>(self, fmt_fields: N2) -> Subscriber<C, N2, E, W>
@@ -654,6 +685,7 @@ impl<C, N, E, W> Subscriber<C, N, E, W> {
             make_writer: self.make_writer,
             is_ansi: self.is_ansi,
             log_internal_errors: self.log_internal_errors,
+            extra_fields: self.extra_fields,
             _inner: self._inner,
         }
     }
@@ -685,6 +717,7 @@ impl<C, N, E, W> Subscriber<C, N, E, W> {
             make_writer: self.make_writer,
             is_ansi: self.is_ansi,
             log_internal_errors: self.log_internal_errors,
+            extra_fields: self.extra_fields,
             _inner: self._inner,
         }
     }
@@ -703,6 +736,7 @@ impl<C> Default for Subscriber<C> {
             make_writer: io::stdout,
             is_ansi: ansi,
             log_internal_errors: false,
+            extra_fields: vec![],
             _inner: PhantomData,
         }
     }
@@ -720,6 +754,7 @@ where
         FmtContext {
             ctx,
             fmt_fields: &self.fmt_fields,
+            extra_fields: &self.extra_fields,
             event,
         }
     }
@@ -1012,6 +1047,7 @@ where
 pub struct FmtContext<'a, C, N> {
     pub(crate) ctx: Context<'a, C>,
     pub(crate) fmt_fields: &'a N,
+    pub(crate) extra_fields: &'a [(&'static str, &'static str)],
     pub(crate) event: &'a Event<'a>,
 }
 

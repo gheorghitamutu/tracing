@@ -413,6 +413,7 @@ pub struct Format<F = Full, T = SystemTime> {
     pub(crate) display_thread_name: bool,
     pub(crate) display_filename: bool,
     pub(crate) display_line_number: bool,
+    pub(crate) display_extra_fields: bool,
 }
 
 // === impl Writer ===
@@ -603,6 +604,7 @@ impl Default for Format<Full, SystemTime> {
             display_thread_name: false,
             display_filename: false,
             display_line_number: false,
+            display_extra_fields: false,
         }
     }
 }
@@ -623,6 +625,7 @@ impl<F, T> Format<F, T> {
             display_thread_name: self.display_thread_name,
             display_filename: self.display_filename,
             display_line_number: self.display_line_number,
+            display_extra_fields: self.display_extra_fields,
         }
     }
 
@@ -662,6 +665,7 @@ impl<F, T> Format<F, T> {
             display_thread_name: self.display_thread_name,
             display_filename: true,
             display_line_number: true,
+            display_extra_fields: false,
         }
     }
 
@@ -694,6 +698,7 @@ impl<F, T> Format<F, T> {
             display_thread_name: self.display_thread_name,
             display_filename: self.display_filename,
             display_line_number: self.display_line_number,
+            display_extra_fields: self.display_extra_fields,
         }
     }
 
@@ -723,6 +728,7 @@ impl<F, T> Format<F, T> {
             display_thread_name: self.display_thread_name,
             display_filename: self.display_filename,
             display_line_number: self.display_line_number,
+            display_extra_fields: self.display_extra_fields,
         }
     }
 
@@ -739,6 +745,7 @@ impl<F, T> Format<F, T> {
             display_thread_name: self.display_thread_name,
             display_filename: self.display_filename,
             display_line_number: self.display_line_number,
+            display_extra_fields: self.display_extra_fields,
         }
     }
 
@@ -818,6 +825,13 @@ impl<F, T> Format<F, T> {
     pub fn with_source_location(self, display_location: bool) -> Self {
         self.with_line_number(display_location)
             .with_file(display_location)
+    }
+
+    pub fn with_extra_fields(self, display_extra_fields: bool) -> Format<F, T> {
+        Format {
+            display_extra_fields,
+            ..self
+        }
     }
 
     fn format_level(&self, level: Level, writer: &mut Writer<'_>) -> fmt::Result

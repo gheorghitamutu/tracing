@@ -227,6 +227,12 @@ where
                 serializer.serialize_entry("timestamp", &timestamp)?;
             }
 
+            if self.display_extra_fields {
+                for (k, v) in ctx.extra_fields.iter() {
+                    serializer.serialize_entry(k, v)?;
+                }
+            }
+
             if self.display_level {
                 serializer.serialize_entry("level", &meta.level().as_serde())?;
             }
