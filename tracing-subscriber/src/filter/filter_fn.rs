@@ -1,26 +1,26 @@
 use crate::{
     filter::LevelFilter,
-    subscribe::{Context, Subscribe},
+    layer::{Context, Layer},
 };
 use core::{any::type_name, fmt, marker::PhantomData};
-use tracing_core::{Collect, Interest, Metadata};
+use tracing_core::{Interest, Metadata, Subscriber};
 
 /// A filter implemented by a closure or function pointer that
 /// determines whether a given span or event is enabled, based on its
 /// [`Metadata`].
 ///
-/// This type can be used for both [per-subscriber filtering][plf] (using its
+/// This type can be used for both [per-layer filtering][plf] (using its
 /// [`Filter`] implementation) and [global filtering][global] (using its
-/// [`Subscribe`] implementation).
+/// [`Layer`] implementation).
 ///
-/// See the [documentation on filtering with subscribers][filtering] for details.
+/// See the [documentation on filtering with layers][filtering] for details.
 ///
 /// [`Metadata`]: tracing_core::Metadata
-/// [`Filter`]: crate::subscribe::Filter
-/// [`Subscribe`]: crate::subscribe::Subscribe
-/// [plf]: crate::subscribe#per-subscriber-filtering
-/// [global]: crate::subscribe#global-filtering
-/// [filtering]: crate::subscribe#filtering-with-subscribers
+/// [`Filter`]: crate::layer::Filter
+/// [`Layer`]: crate::layer::Layer
+/// [plf]: crate::layer#per-layer-filtering
+/// [global]: crate::layer#global-filtering
+/// [filtering]: crate::layer#filtering-with-layers
 #[derive(Clone)]
 pub struct FilterFn<F = fn(&Metadata<'_>) -> bool> {
     enabled: F,
@@ -31,28 +31,28 @@ pub struct FilterFn<F = fn(&Metadata<'_>) -> bool> {
 /// determines whether a given span or event is enabled _dynamically_,
 /// potentially based on the current [span context].
 ///
-/// This type can be used for both [per-subscriber filtering][plf] (using its
+/// This type can be used for both [per-layer filtering][plf] (using its
 /// [`Filter`] implementation) and [global filtering][global] (using its
-/// [`Subscribe`] implementation).
+/// [`Layer`] implementation).
 ///
-/// See the [documentation on filtering with subscribers][filtering] for details.
+/// See the [documentation on filtering with layers][filtering] for details.
 ///
-/// [span context]: crate::subscribe::Context
-/// [`Filter`]: crate::subscribe::Filter
-/// [`Subscribe`]: crate::subscribe::Subscribe
-/// [plf]: crate::subscribe#per-subscriber-filtering
-/// [global]: crate::subscribe#global-filtering
-/// [filtering]: crate::subscribe#filtering-with-subscribers
+/// [span context]: crate::layer::Context
+/// [`Filter`]: crate::layer::Filter
+/// [`Layer`]: crate::layer::Layer
+/// [plf]: crate::layer#per-layer-filtering
+/// [global]: crate::layer#global-filtering
+/// [filtering]: crate::layer#filtering-with-layers
 pub struct DynFilterFn<
-    C,
+    S,
     // TODO(eliza): should these just be boxed functions?
-    F = fn(&Metadata<'_>, &Context<'_, C>) -> bool,
+    F = fn(&Metadata<'_>, &Context<'_, S>) -> bool,
     R = fn(&'static Metadata<'static>) -> Interest,
 > {
     enabled: F,
     register_callsite: Option<R>,
     max_level_hint: Option<LevelFilter>,
-    _s: PhantomData<fn(C)>,
+    _s: PhantomData<fn(S)>,
 }
 
 // === impl FilterFn ===
@@ -60,26 +60,26 @@ pub struct DynFilterFn<
 /// Constructs a [`FilterFn`], from a function or closure that returns `true` if
 /// a span or event should be enabled, based on its [`Metadata`].
 ///
-/// The returned [`FilterFn`] can be used for both [per-subscriber filtering][plf]
+/// The returned [`FilterFn`] can be used for both [per-layer filtering][plf]
 /// (using its [`Filter`] implementation) and [global filtering][global] (using
-/// its  [`Subscribe`] implementation).
+/// its  [`Layer`] implementation).
 ///
-/// See the [documentation on filtering with subscribers][filtering] for details.
+/// See the [documentation on filtering with layers][filtering] for details.
 ///
 /// This is equivalent to calling [`FilterFn::new`].
 ///
 /// [`Metadata`]: tracing_core::Metadata
-/// [`Filter`]: crate::subscribe::Filter
-/// [`Subscribe`]: crate::subscribe::Subscribe
-/// [plf]: crate::subscribe#per-subscriber-filtering
-/// [global]: crate::subscribe#global-filtering
-/// [filtering]: crate::subscribe#filtering-with-subscribers
+/// [`Filter`]: crate::layer::Filter
+/// [`Layer`]: crate::layer::Layer
+/// [plf]: crate::layer#per-layer-filtering
+/// [global]: crate::layer#global-filtering
+/// [filtering]: crate::layer#filtering-with-layers
 ///
 /// # Examples
 ///
 /// ```
 /// use tracing_subscriber::{
-///     subscribe::{Subscribe, CollectExt},
+///     layer::{Layer, SubscriberExt},
 ///     filter,
 ///     util::SubscriberInitExt,
 /// };
@@ -89,10 +89,10 @@ pub struct DynFilterFn<
 ///     metadata.target() == "interesting_things"
 /// });
 ///
-/// let my_subscriber = tracing_subscriber::fmt::subscriber();
+/// let my_layer = tracing_subscriber::fmt::layer();
 ///
 /// tracing_subscriber::registry()
-///     .with(my_subscriber.with_filter(my_filter))
+///     .with(my_layer.with_filter(my_filter))
 ///     .init();
 ///
 /// // This event will not be enabled.
@@ -120,17 +120,17 @@ where
 ///
 /// If this is *not* necessary, use [`filter_fn`] instead.
 ///
-/// The returned [`DynFilterFn`] can be used for both [per-subscriber filtering][plf]
+/// The returned [`DynFilterFn`] can be used for both [per-layer filtering][plf]
 /// (using its [`Filter`] implementation) and [global filtering][global] (using
-/// its  [`Subscribe`] implementation).
+/// its  [`Layer`] implementation).
 ///
-/// See the [documentation on filtering with subscribers][filtering] for details.
+/// See the [documentation on filtering with layers][filtering] for details.
 ///
 /// # Examples
 ///
 /// ```
 /// use tracing_subscriber::{
-///     subscribe::{Subscribe, CollectExt},
+///     layer::{Layer, SubscriberExt},
 ///     filter,
 ///     util::SubscriberInitExt,
 /// };
@@ -150,10 +150,10 @@ where
 ///     false
 /// });
 ///
-/// let my_subscriber = tracing_subscriber::fmt::subscriber();
+/// let my_layer = tracing_subscriber::fmt::layer();
 ///
 /// tracing_subscriber::registry()
-///     .with(my_subscriber.with_filter(my_filter))
+///     .with(my_layer.with_filter(my_filter))
 ///     .init();
 ///
 /// // This event will not be enabled.
@@ -165,16 +165,16 @@ where
 /// });
 /// ```
 ///
-/// [`Filter`]: crate::subscribe::Filter
-/// [`Subscribe`]: crate::subscribe::Subscribe
-/// [plf]: crate::subscribe#per-subscriber-filtering
-/// [global]: crate::subscribe#global-filtering
-/// [filtering]: crate::subscribe#filtering-with-subscribers
-/// [`Context`]: crate::subscribe::Context
+/// [`Filter`]: crate::layer::Filter
+/// [`Layer`]: crate::layer::Layer
+/// [plf]: crate::layer#per-layer-filtering
+/// [global]: crate::layer#global-filtering
+/// [filtering]: crate::layer#filtering-with-layers
+/// [`Context`]: crate::layer::Context
 /// [`Metadata`]: tracing_core::Metadata
-pub fn dynamic_filter_fn<C, F>(f: F) -> DynFilterFn<C, F>
+pub fn dynamic_filter_fn<S, F>(f: F) -> DynFilterFn<S, F>
 where
-    F: Fn(&Metadata<'_>, &Context<'_, C>) -> bool,
+    F: Fn(&Metadata<'_>, &Context<'_, S>) -> bool,
 {
     DynFilterFn::new(f)
 }
@@ -189,18 +189,18 @@ where
     /// If determining whether a span or event should be enabled also requires
     /// information about the current span context, use [`DynFilterFn`] instead.
     ///
-    /// See the [documentation on per-subscriber filtering][plf] for details on using
+    /// See the [documentation on per-layer filtering][plf] for details on using
     /// [`Filter`]s.
     ///
-    /// [`Filter`]: crate::subscribe::Filter
-    /// [plf]: crate::subscribe#per-subscriber-filtering
+    /// [`Filter`]: crate::layer::Filter
+    /// [plf]: crate::layer#per-layer-filtering
     /// [`Metadata`]: tracing_core::Metadata
     ///
     /// # Examples
     ///
     /// ```
     /// use tracing_subscriber::{
-    ///     subscribe::{Subscribe, CollectExt},
+    ///     layer::{Layer, SubscriberExt},
     ///     filter::FilterFn,
     ///     util::SubscriberInitExt,
     /// };
@@ -210,10 +210,10 @@ where
     ///     metadata.target() == "interesting_things"
     /// });
     ///
-    /// let my_subscriber = tracing_subscriber::fmt::subscriber();
+    /// let my_layer = tracing_subscriber::fmt::layer();
     ///
     /// tracing_subscriber::registry()
-    ///     .with(my_subscriber.with_filter(my_filter))
+    ///     .with(my_layer.with_filter(my_filter))
     ///     .init();
     ///
     /// // This event will not be enabled.
@@ -242,7 +242,7 @@ where
     ///
     /// ```
     /// use tracing_subscriber::{
-    ///     subscribe::{Subscribe, CollectExt},
+    ///     layer::{Layer, SubscriberExt},
     ///     filter::{filter_fn, LevelFilter},
     ///     util::SubscriberInitExt,
     /// };
@@ -257,15 +257,15 @@ where
     ///     // below, set the max level hint
     ///     .with_max_level_hint(LevelFilter::INFO);
     ///
-    /// let my_subscriber = tracing_subscriber::fmt::subscriber();
+    /// let my_layer = tracing_subscriber::fmt::layer();
     ///
     /// tracing_subscriber::registry()
-    ///     .with(my_subscriber.with_filter(my_filter))
+    ///     .with(my_layer.with_filter(my_filter))
     ///     .init();
     /// ```
     ///
     /// [`Level`]: tracing_core::Level
-    /// [`Filter::max_level_hint`]: crate::subscribe::Filter::max_level_hint
+    /// [`Filter::max_level_hint`]: crate::layer::Filter::max_level_hint
     pub fn with_max_level_hint(self, max_level_hint: impl Into<LevelFilter>) -> Self {
         Self {
             max_level_hint: Some(max_level_hint.into()),
@@ -295,7 +295,7 @@ where
         metadata: &'static Metadata<'static>,
     ) -> Interest {
         // Because `self.enabled` takes a `Metadata` only (and no `Context`
-        // parameter), we can reasonably assume its results are cacheable, and
+        // parameter), we can reasonably assume its results are cachable, and
         // just return `Interest::always`/`Interest::never`.
         if (self.enabled)(metadata) {
             debug_assert!(
@@ -321,12 +321,12 @@ where
     }
 }
 
-impl<C, F> Subscribe<C> for FilterFn<F>
+impl<S, F> Layer<S> for FilterFn<F>
 where
     F: Fn(&Metadata<'_>) -> bool + 'static,
-    C: Collect,
+    S: Subscriber,
 {
-    fn enabled(&self, metadata: &Metadata<'_>, _: Context<'_, C>) -> bool {
+    fn enabled(&self, metadata: &Metadata<'_>, _: Context<'_, S>) -> bool {
         self.is_enabled(metadata)
     }
 
@@ -359,9 +359,9 @@ impl<F> fmt::Debug for FilterFn<F> {
 
 // === impl DynFilterFn ==
 
-impl<C, F> DynFilterFn<C, F>
+impl<S, F> DynFilterFn<S, F>
 where
-    F: Fn(&Metadata<'_>, &Context<'_, C>) -> bool,
+    F: Fn(&Metadata<'_>, &Context<'_, S>) -> bool,
 {
     /// Constructs a [`Filter`] from a function or closure that returns `true`
     /// if a span or event should be enabled in the current [span
@@ -375,19 +375,19 @@ where
     ///
     /// If this is *not* necessary, use [`FilterFn`] instead.
     ///
-    /// See the [documentation on per-subscriber filtering][plf] for details on using
+    /// See the [documentation on per-layer filtering][plf] for details on using
     /// [`Filter`]s.
     ///
-    /// [`Filter`]: crate::subscribe::Filter
-    /// [plf]: crate::subscribe#per-subscriber-filtering
-    /// [`Context`]: crate::subscribe::Context
+    /// [`Filter`]: crate::layer::Filter
+    /// [plf]: crate::layer#per-layer-filtering
+    /// [`Context`]: crate::layer::Context
     /// [`Metadata`]: tracing_core::Metadata
     ///
     /// # Examples
     ///
     /// ```
     /// use tracing_subscriber::{
-    ///     subscribe::{Subscribe, CollectExt},
+    ///     layer::{Layer, SubscriberExt},
     ///     filter::DynFilterFn,
     ///     util::SubscriberInitExt,
     /// };
@@ -407,10 +407,10 @@ where
     ///     false
     /// });
     ///
-    /// let my_subscriber = tracing_subscriber::fmt::subscriber();
+    /// let my_layer = tracing_subscriber::fmt::layer();
     ///
     /// tracing_subscriber::registry()
-    ///     .with(my_subscriber.with_filter(my_filter))
+    ///     .with(my_layer.with_filter(my_filter))
     ///     .init();
     ///
     /// // This event will not be enabled.
@@ -431,9 +431,9 @@ where
     }
 }
 
-impl<C, F, R> DynFilterFn<C, F, R>
+impl<S, F, R> DynFilterFn<S, F, R>
 where
-    F: Fn(&Metadata<'_>, &Context<'_, C>) -> bool,
+    F: Fn(&Metadata<'_>, &Context<'_, S>) -> bool,
 {
     /// Sets the highest verbosity [`Level`] the filter function will enable.
     ///
@@ -448,7 +448,7 @@ where
     ///
     /// ```
     /// use tracing_subscriber::{
-    ///     subscribe::{Subscribe, CollectExt},
+    ///     layer::{Layer, SubscriberExt},
     ///     filter::{DynFilterFn, LevelFilter},
     ///     util::SubscriberInitExt,
     /// };
@@ -477,15 +477,15 @@ where
     ///     // below, set the max level hint
     ///     .with_max_level_hint(LevelFilter::INFO);
     ///
-    /// let my_subscriber = tracing_subscriber::fmt::subscriber();
+    /// let my_layer = tracing_subscriber::fmt::layer();
     ///
     /// tracing_subscriber::registry()
-    ///     .with(my_subscriber.with_filter(my_filter))
+    ///     .with(my_layer.with_filter(my_filter))
     ///     .init();
     /// ```
     ///
     /// [`Level`]: tracing_core::Level
-    /// [`Filter::max_level_hint`]: crate::subscribe::Filter::max_level_hint
+    /// [`Filter::max_level_hint`]: crate::layer::Filter::max_level_hint
     pub fn with_max_level_hint(self, max_level_hint: impl Into<LevelFilter>) -> Self {
         Self {
             max_level_hint: Some(max_level_hint.into()),
@@ -513,11 +513,11 @@ where
     ///
     /// ```
     /// use tracing_subscriber::{
-    ///     subscribe::{Subscribe, CollectExt},
+    ///     layer::{Layer, SubscriberExt},
     ///     filter::DynFilterFn,
     ///     util::SubscriberInitExt,
     /// };
-    /// use tracing_core::collect::Interest;
+    /// use tracing_core::subscriber::Interest;
     ///
     /// // Only enable spans or events within a span named "interesting_span".
     /// let my_filter = DynFilterFn::new(|metadata, cx| {
@@ -544,18 +544,18 @@ where
     ///     Interest::sometimes()
     /// });
     ///
-    /// let my_subscriber = tracing_subscriber::fmt::subscriber();
+    /// let my_layer = tracing_subscriber::fmt::layer();
     ///
     /// tracing_subscriber::registry()
-    ///     .with(my_subscriber.with_filter(my_filter))
+    ///     .with(my_layer.with_filter(my_filter))
     ///     .init();
     /// ```
     ///
-    /// [cse]: crate::subscribe::Filter::callsite_enabled
-    /// [`enabled`]: crate::subscribe::Filter::enabled
+    /// [cse]: crate::layer::Filter::callsite_enabled
+    /// [`enabled`]: crate::layer::Filter::enabled
     /// [`Metadata`]: tracing_core::Metadata
-    /// [span context]: crate::subscribe::Context
-    pub fn with_callsite_filter<R2>(self, callsite_enabled: R2) -> DynFilterFn<C, F, R2>
+    /// [span context]: crate::layer::Context
+    pub fn with_callsite_filter<R2>(self, callsite_enabled: R2) -> DynFilterFn<S, F, R2>
     where
         R2: Fn(&'static Metadata<'static>) -> Interest,
     {
@@ -597,13 +597,13 @@ where
     }
 }
 
-impl<C, F, R> DynFilterFn<C, F, R>
+impl<S, F, R> DynFilterFn<S, F, R>
 where
-    F: Fn(&Metadata<'_>, &Context<'_, C>) -> bool,
+    F: Fn(&Metadata<'_>, &Context<'_, S>) -> bool,
     R: Fn(&'static Metadata<'static>) -> Interest,
 {
     #[inline]
-    fn is_enabled(&self, metadata: &Metadata<'_>, cx: &Context<'_, C>) -> bool {
+    fn is_enabled(&self, metadata: &Metadata<'_>, cx: &Context<'_, S>) -> bool {
         let enabled = (self.enabled)(metadata, cx);
         debug_assert!(
             !enabled || is_below_max_level(&self.max_level_hint, metadata),
@@ -640,13 +640,13 @@ where
     }
 }
 
-impl<C, F, R> Subscribe<C> for DynFilterFn<C, F, R>
+impl<S, F, R> Layer<S> for DynFilterFn<S, F, R>
 where
-    F: Fn(&Metadata<'_>, &Context<'_, C>) -> bool + 'static,
+    F: Fn(&Metadata<'_>, &Context<'_, S>) -> bool + 'static,
     R: Fn(&'static Metadata<'static>) -> Interest + 'static,
-    C: Collect,
+    S: Subscriber,
 {
-    fn enabled(&self, metadata: &Metadata<'_>, cx: Context<'_, C>) -> bool {
+    fn enabled(&self, metadata: &Metadata<'_>, cx: Context<'_, S>) -> bool {
         self.is_enabled(metadata, &cx)
     }
 
@@ -659,7 +659,7 @@ where
     }
 }
 
-impl<C, F, R> fmt::Debug for DynFilterFn<C, F, R> {
+impl<S, F, R> fmt::Debug for DynFilterFn<S, F, R> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut s = f.debug_struct("DynFilterFn");
         s.field("enabled", &format_args!("{}", type_name::<F>()));
@@ -676,7 +676,7 @@ impl<C, F, R> fmt::Debug for DynFilterFn<C, F, R> {
     }
 }
 
-impl<C, F, R> Clone for DynFilterFn<C, F, R>
+impl<S, F, R> Clone for DynFilterFn<S, F, R>
 where
     F: Clone,
     R: Clone,
@@ -691,9 +691,9 @@ where
     }
 }
 
-impl<F, C> From<F> for DynFilterFn<C, F>
+impl<F, S> From<F> for DynFilterFn<S, F>
 where
-    F: Fn(&Metadata<'_>, &Context<'_, C>) -> bool,
+    F: Fn(&Metadata<'_>, &Context<'_, S>) -> bool,
 {
     fn from(f: F) -> Self {
         Self::new(f)
@@ -704,13 +704,13 @@ where
 
 feature! {
     #![all(feature = "registry", feature = "std")]
-    use crate::subscribe::Filter;
+    use crate::layer::Filter;
 
-    impl<C, F> Filter<C> for FilterFn<F>
+    impl<S, F> Filter<S> for FilterFn<F>
     where
         F: Fn(&Metadata<'_>) -> bool,
     {
-        fn enabled(&self, metadata: &Metadata<'_>, _: &Context<'_, C>) -> bool {
+        fn enabled(&self, metadata: &Metadata<'_>, _: &Context<'_, S>) -> bool {
             self.is_enabled(metadata)
         }
 
@@ -723,12 +723,12 @@ feature! {
         }
     }
 
-    impl<C, F, R> Filter<C> for DynFilterFn<C, F, R>
+    impl<S, F, R> Filter<S> for DynFilterFn<S, F, R>
     where
-        F: Fn(&Metadata<'_>, &Context<'_, C>) -> bool,
+        F: Fn(&Metadata<'_>, &Context<'_, S>) -> bool,
         R: Fn(&'static Metadata<'static>) -> Interest,
     {
-        fn enabled(&self, metadata: &Metadata<'_>, cx: &Context<'_, C>) -> bool {
+        fn enabled(&self, metadata: &Metadata<'_>, cx: &Context<'_, S>) -> bool {
             self.is_enabled(metadata, cx)
         }
 

@@ -299,10 +299,7 @@ where
     // downcasting from being inlined if `lookup_current` is inlined.
     #[inline(never)]
     #[cfg(all(feature = "registry", feature = "std"))]
-    fn lookup_current_filtered<'lookup>(
-        &self,
-        subscriber: &'lookup C,
-    ) -> Option<registry::SpanRef<'lookup, C>>
+    fn lookup_current_filtered<'lookup>(&self, subscriber: &'lookup C) -> Option<registry::SpanRef<'lookup, C>>
     where
         C: LookupSpan<'lookup>,
     {

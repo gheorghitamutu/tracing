@@ -47,9 +47,7 @@ fn basic_trees() {
         .run_with_handle();
 
     let info_tree = info
-        .and_then(
-            with_target.with_filter(filter::filter_fn(|meta| dbg!(meta.target()) == "my_target")),
-        )
+        .and_then(with_target.with_filter(filter::filter_fn(|meta| dbg!(meta.target()) == "my_target")))
         .with_filter(LevelFilter::INFO);
 
     let subscriber = tracing_subscriber::registry().with(info_tree).with(all);

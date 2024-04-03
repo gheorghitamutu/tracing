@@ -1,14 +1,14 @@
 #![cfg(all(feature = "env-filter", feature = "fmt"))]
-use tracing::{self, collect::with_default, Span};
-use tracing_subscriber::{filter::EnvFilter, fmt::Collector};
+use tracing::{self, subscriber::with_default, Span};
+use tracing_subscriber::{filter::EnvFilter, FmtSubscriber};
 
 #[test]
 fn duplicate_spans() {
-    let collector = Collector::builder()
+    let subscriber = FmtSubscriber::builder()
         .with_env_filter(EnvFilter::new("[root]=debug"))
         .finish();
 
-    with_default(collector, || {
+    with_default(subscriber, || {
         let root = tracing::debug_span!("root");
         root.in_scope(|| {
             // root:

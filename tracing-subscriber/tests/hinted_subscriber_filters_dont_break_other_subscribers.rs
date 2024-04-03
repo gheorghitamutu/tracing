@@ -105,9 +105,8 @@ fn events() {
 
 fn filter<S>() -> DynFilterFn<S> {
     DynFilterFn::new(
-        (|metadata: &Metadata<'_>, _: &tracing_subscriber::subscribe::Context<'_, S>| {
-            metadata.level() <= &Level::INFO
-        }) as fn(&Metadata<'_>, &Context<'_, S>) -> bool,
+        (|metadata: &Metadata<'_>, _: &tracing_subscriber::subscribe::Context<'_, S>| metadata.level() <= &Level::INFO)
+            as fn(&Metadata<'_>, &Context<'_, S>) -> bool,
     )
     .with_max_level_hint(Level::INFO)
 }

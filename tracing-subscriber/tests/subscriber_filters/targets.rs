@@ -21,8 +21,7 @@ fn log_events() {
         .with_default(LevelFilter::DEBUG)
         .with_target(inner::MODULE_PATH, LevelFilter::WARN);
 
-    let subscriber =
-        tracing_subscriber::subscribe::Identity::new().with_filter(filter_fn(move |_meta| true));
+    let subscriber = tracing_subscriber::subscribe::Identity::new().with_filter(filter_fn(move |_meta| true));
 
     let _guard = tracing_subscriber::registry()
         .with(filter)

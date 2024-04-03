@@ -1,6 +1,6 @@
 //! A rolling file appender.
 //!
-//! Creates a new log file at a fixed frequency as defined by [`Rotation`].
+//! Creates a new log file at a fixed frequency as defined by [`Rotation`][self::Rotation].
 //! Logs will be written to this file for the duration of the period and will automatically roll over
 //! to the newly created log file once the time period has elapsed.
 //!
@@ -116,7 +116,7 @@ impl RollingFileAppender {
     /// Creates a new `RollingFileAppender`.
     ///
     /// A `RollingFileAppender` will have a fixed rotation whose frequency is
-    /// defined by [`Rotation`]. The `directory` and
+    /// defined by [`Rotation`][self::Rotation]. The `directory` and
     /// `file_name_prefix` arguments determine the location and file name's _prefix_
     /// of the log file. `RollingFileAppender` will automatically append the current date
     /// and hour (UTC format) to the file name.
@@ -282,9 +282,9 @@ impl fmt::Debug for RollingFileAppender {
 ///     let appender = tracing_appender::rolling::minutely("/some/path", "rolling.log");
 ///     let (non_blocking_appender, _guard) = tracing_appender::non_blocking(appender);
 ///
-///     let collector = tracing_subscriber::fmt().with_writer(non_blocking_appender);
+///     let subscriber = tracing_subscriber::fmt().with_writer(non_blocking_appender);
 ///
-///     tracing::collect::with_default(collector.finish(), || {
+///     tracing::subscriber::with_default(subscriber.finish(), || {
 ///         tracing::event!(tracing::Level::INFO, "Hello");
 ///     });
 /// # }
@@ -317,9 +317,9 @@ pub fn minutely(
 ///     let appender = tracing_appender::rolling::hourly("/some/path", "rolling.log");
 ///     let (non_blocking_appender, _guard) = tracing_appender::non_blocking(appender);
 ///
-///     let collector = tracing_subscriber::fmt().with_writer(non_blocking_appender);
+///     let subscriber = tracing_subscriber::fmt().with_writer(non_blocking_appender);
 ///
-///     tracing::collect::with_default(collector.finish(), || {
+///     tracing::subscriber::with_default(subscriber.finish(), || {
 ///         tracing::event!(tracing::Level::INFO, "Hello");
 ///     });
 /// # }
@@ -340,7 +340,7 @@ pub fn hourly(
 /// a non-blocking, daily file appender.
 ///
 /// A `RollingFileAppender` has a fixed rotation whose frequency is
-/// defined by [`Rotation`]. The `directory` and
+/// defined by [`Rotation`][self::Rotation]. The `directory` and
 /// `file_name_prefix` arguments determine the location and file name's _prefix_
 /// of the log file. `RollingFileAppender` automatically appends the current date in UTC.
 ///
@@ -353,9 +353,9 @@ pub fn hourly(
 ///     let appender = tracing_appender::rolling::daily("/some/path", "rolling.log");
 ///     let (non_blocking_appender, _guard) = tracing_appender::non_blocking(appender);
 ///
-///     let collector = tracing_subscriber::fmt().with_writer(non_blocking_appender);
+///     let subscriber = tracing_subscriber::fmt().with_writer(non_blocking_appender);
 ///
-///     tracing::collect::with_default(collector.finish(), || {
+///     tracing::subscriber::with_default(subscriber.finish(), || {
 ///         tracing::event!(tracing::Level::INFO, "Hello");
 ///     });
 /// # }
@@ -387,9 +387,9 @@ pub fn daily(
 ///     let appender = tracing_appender::rolling::never("/some/path", "non-rolling.log");
 ///     let (non_blocking_appender, _guard) = tracing_appender::non_blocking(appender);
 ///
-///     let collector = tracing_subscriber::fmt().with_writer(non_blocking_appender);
+///     let subscriber = tracing_subscriber::fmt().with_writer(non_blocking_appender);
 ///
-///     tracing::collect::with_default(collector.finish(), || {
+///     tracing::subscriber::with_default(subscriber.finish(), || {
 ///         tracing::event!(tracing::Level::INFO, "Hello");
 ///     });
 /// # }

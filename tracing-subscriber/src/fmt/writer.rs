@@ -1,17 +1,16 @@
 //! Abstractions for creating [`io::Write`] instances.
 //!
 //! [`io::Write`]: std::io::Write
-
 use std::{
     fmt,
     io::{self, Write},
-    sync::{Mutex, MutexGuard},
+    sync::{Arc, Mutex, MutexGuard},
 };
 use tracing_core::Metadata;
 
 /// A type that can create [`io::Write`] instances.
 ///
-/// `MakeWriter` is used by [`fmt::Collector`] or [`fmt::Subscriber`] to print
+/// `MakeWriter` is used by [`fmt::Layer`] or [`fmt::Subscriber`] to print
 /// formatted text representations of [`Event`]s.
 ///
 /// This trait is already implemented for function pointers and
@@ -19,18 +18,6 @@ use tracing_core::Metadata;
 /// as [`io::stdout`] and [`io::stderr`]. Additionally, it is implemented for
 /// [`std::sync::Mutex`] when the type inside the mutex implements
 /// [`io::Write`].
-///
-/// The [`MakeWriter::make_writer_for`] method takes [`Metadata`] describing a
-/// span or event and returns a writer. `MakeWriter`s can optionally provide
-/// implementations of this method with behaviors that differ based on the span
-/// or event being written. For example, events at different [levels] might be
-/// written to different output streams, or data from different [targets] might
-/// be written to separate log files. When the `MakeWriter` has no custom
-/// behavior based on metadata, the default implementation of `make_writer_for`
-/// simply calls `self.make_writer()`, ignoring the metadata. Therefore, when
-/// metadata _is_ available, callers should prefer to call `make_writer_for`,
-/// passing in that metadata, so that the `MakeWriter` implementation can choose
-/// the appropriate behavior.
 ///
 /// # Examples
 ///
@@ -96,8 +83,8 @@ use tracing_core::Metadata;
 /// ```
 ///
 /// [`io::Write`]: std::io::Write
-/// [`fmt::Collector`]: super::super::fmt::Collector
-/// [`fmt::Subscriber`]: super::super::fmt::Subscriber
+/// [`fmt::Layer`]: crate::fmt::Layer
+/// [`fmt::Subscriber`]: crate::fmt::Subscriber
 /// [`Event`]: tracing_core::event::Event
 /// [`io::stdout`]: std::io::stdout()
 /// [`io::stderr`]: std::io::stderr()
@@ -116,15 +103,14 @@ pub trait MakeWriter<'a> {
     ///
     /// # Implementer notes
     ///
-    /// [`fmt::Subscriber`] or [`fmt::Collector`] will call this method each
-    /// time an event is recorded. Ensure any state that must be saved across
-    /// writes is not lost when the [`Writer`] instance is dropped. If creating
-    /// a [`io::Write`] instance is expensive, be sure to cache it when
-    /// implementing [`MakeWriter`] to improve performance.
+    /// [`fmt::Layer`] or [`fmt::Subscriber`] will call this method each time an event is recorded. Ensure any state
+    /// that must be saved across writes is not lost when the [`Writer`] instance is dropped. If
+    /// creating a [`io::Write`] instance is expensive, be sure to cache it when implementing
+    /// [`MakeWriter`] to improve performance.
     ///
     /// [`Writer`]: MakeWriter::Writer
-    /// [`fmt::Subscriber`]: super::super::fmt::Subscriber
-    /// [`fmt::Collector`]: super::super::fmt::Collector
+    /// [`fmt::Layer`]: crate::fmt::Layer
+    /// [`fmt::Subscriber`]: crate::fmt::Subscriber
     /// [`io::Write`]: std::io::Write
     fn make_writer(&'a self) -> Self::Writer;
 
@@ -269,10 +255,10 @@ pub trait MakeWriterExt<'a>: MakeWriter<'a> {
     /// ```
     /// # use tracing::Level;
     /// # use tracing_subscriber::fmt::writer::MakeWriterExt;
-    /// use std::fs::File;
+    /// use std::{sync::Arc, fs::File};
     /// # // don't actually create the file when running the tests.
     /// # fn docs() -> std::io::Result<()> {
-    /// let debug_log = File::create("debug.log")?;
+    /// let debug_log = Arc::new(File::create("debug.log")?);
     ///
     /// let mk_writer = std::io::stderr
     ///     .with_max_level(Level::ERROR)
@@ -342,7 +328,7 @@ pub trait MakeWriterExt<'a>: MakeWriter<'a> {
     /// determine if  a writer should be produced for a given span or event.
     ///
     /// If the predicate returns `false`, the wrapped [`MakeWriter`]'s
-    /// [`make_writer_for`][mwf] will return [`OptionalWriter::none`].
+    /// [`make_writer_for`][mwf] will return [`OptionalWriter::none`][own].
     /// Otherwise, it calls the wrapped [`MakeWriter`]'s
     /// [`make_writer_for`][mwf] method, and returns the produced writer.
     ///
@@ -356,10 +342,10 @@ pub trait MakeWriterExt<'a>: MakeWriter<'a> {
     ///
     /// ```
     /// use tracing_subscriber::fmt::writer::MakeWriterExt;
-    /// use std::fs::File;
+    /// use std::{sync::Arc, fs::File};
     /// # // don't actually create the file when running the tests.
     /// # fn docs() -> std::io::Result<()> {
-    /// let access_log = File::create("access.log")?;
+    /// let access_log = Arc::new(File::create("access.log")?);
     ///
     /// let mk_writer = access_log
     ///     // Only write events with the target "http::access_log" to the
@@ -376,14 +362,17 @@ pub trait MakeWriterExt<'a>: MakeWriter<'a> {
     /// Conditionally enabling or disabling a log file:
     /// ```
     /// use tracing_subscriber::fmt::writer::MakeWriterExt;
-    /// use std::{sync::atomic::{AtomicBool, Ordering}, fs::File};
+    /// use std::{
+    ///     sync::{Arc, atomic::{AtomicBool, Ordering}},
+    ///     fs::File,
+    /// };
     ///
     /// static DEBUG_LOG_ENABLED: AtomicBool = AtomicBool::new(false);
     ///
     /// # // don't actually create the file when running the tests.
     /// # fn docs() -> std::io::Result<()> {
     /// // Create the debug log file
-    /// let debug_file = File::create("debug.log")?
+    /// let debug_file = Arc::new(File::create("debug.log")?)
     ///     // Enable the debug log only if the flag is enabled.
     ///     .with_filter(|_| DEBUG_LOG_ENABLED.load(Ordering::Acquire));
     ///
@@ -404,6 +393,7 @@ pub trait MakeWriterExt<'a>: MakeWriter<'a> {
     ///
     /// [`Metadata`]: tracing_core::Metadata
     /// [mwf]: MakeWriter::make_writer_for
+    /// [own]: EitherWriter::none
     fn with_filter<F>(self, filter: F) -> WithFilter<Self, F>
     where
         Self: Sized,
@@ -433,7 +423,30 @@ pub trait MakeWriterExt<'a>: MakeWriter<'a> {
     /// ```
     ///
     /// `and` can be used in conjunction with filtering combinators. For
-    /// example, if we want to write to a number of outputs depending on
+    /// example, if we want to write to a number of outputs depending on the
+    /// level of an event, we could write:
+    ///
+    /// ```
+    /// use tracing::Level;
+    /// # use tracing_subscriber::fmt::writer::MakeWriterExt;
+    /// use std::{sync::Arc, fs::File};
+    /// # // don't actually create the file when running the tests.
+    /// # fn docs() -> std::io::Result<()> {
+    /// let debug_log = Arc::new(File::create("debug.log")?);
+    ///
+    /// // Write everything to the debug log.
+    /// let mk_writer = debug_log
+    ///     // Write the `ERROR` and `WARN` levels to stderr.
+    ///     .and(std::io::stderr.with_max_level(Level::WARN))
+    ///     // Write `INFO` to `stdout`.
+    ///     .and(std::io::stdout
+    ///         .with_max_level(Level::INFO)
+    ///         .with_min_level(Level::INFO)
+    ///     );
+    ///
+    /// tracing_subscriber::fmt().with_writer(mk_writer).init();
+    /// # Ok(()) }
+    /// ```
     ///
     /// [writers]: std::io::Write
     fn and<B>(self, other: B) -> Tee<Self, B>
@@ -446,7 +459,7 @@ pub trait MakeWriterExt<'a>: MakeWriter<'a> {
 
     /// Combines `self` with another type implementing [`MakeWriter`], returning
     /// a new [`MakeWriter`] that calls `other`'s [`make_writer`] if `self`'s
-    /// `make_writer` returns [`OptionalWriter::none`].
+    /// `make_writer` returns [`OptionalWriter::none`][own].
     ///
     /// # Examples
     ///
@@ -466,6 +479,7 @@ pub trait MakeWriterExt<'a>: MakeWriter<'a> {
     /// ```
     ///
     /// [`make_writer`]: MakeWriter::make_writer
+    /// [own]: EitherWriter::none
     fn or_else<W, B>(self, other: B) -> OrElse<Self, B>
     where
         Self: MakeWriter<'a, Writer = OptionalWriter<W>> + Sized,
@@ -476,24 +490,9 @@ pub trait MakeWriterExt<'a>: MakeWriter<'a> {
     }
 }
 
-/// A type implementing [`io::Write`] for a [`MutexGuard`] where the type
-/// inside the [`Mutex`] implements [`io::Write`].
-///
-/// This is used by the [`MakeWriter`] implementation for [`Mutex`], because
-/// [`MutexGuard`] itself will not implement [`io::Write`] — instead, it
-/// _dereferences_ to a type implementing [`io::Write`]. Because [`MakeWriter`]
-/// requires the `Writer` type to implement [`io::Write`], it's necessary to add
-/// a newtype that forwards the trait implementation.
-///
-/// [`MutexGuard`]: https://doc.rust-lang.org/std/sync/struct.MutexGuard.html
-/// [`Mutex`]: https://doc.rust-lang.org/std/sync/struct.Mutex.html
-/// [`MakeWriter`]: trait.MakeWriter.html
-#[derive(Debug)]
-pub struct MutexGuardWriter<'a, W>(MutexGuard<'a, W>);
-
 /// A writer intended to support [`libtest`'s output capturing][capturing] for use in unit tests.
 ///
-/// `TestWriter` is used by [`fmt::Collector`] or [`fmt::Subscriber`] to enable capturing support.
+/// `TestWriter` is used by [`fmt::Subscriber`] or [`fmt::Layer`] to enable capturing support.
 ///
 /// `cargo test` can only capture output from the standard library's [`print!`] macro. See
 /// [`libtest`'s output capturing][capturing] for more details about output capturing.
@@ -501,12 +500,12 @@ pub struct MutexGuardWriter<'a, W>(MutexGuard<'a, W>);
 /// Writing to [`io::stdout`] and [`io::stderr`] produces the same results as using
 /// [`libtest`'s `--nocapture` option][nocapture] which may make the results look unreadable.
 ///
-/// [`fmt::Collector`]: super::Collector
 /// [`fmt::Subscriber`]: super::Subscriber
+/// [`fmt::Layer`]: super::Layer
 /// [capturing]: https://doc.rust-lang.org/book/ch11-02-running-tests.html#showing-function-output
 /// [nocapture]: https://doc.rust-lang.org/cargo/commands/cargo-test.html
-/// [`io::stdout`]: std::io::stdout()
-/// [`io::stderr`]: std::io::stderr()
+/// [`io::stdout`]: std::io::stdout
+/// [`io::stderr`]: std::io::stderr
 /// [`print!`]: std::print!
 #[derive(Default, Debug)]
 pub struct TestWriter {
@@ -520,13 +519,13 @@ pub struct TestWriter {
 ///
 /// # Examples
 ///
-/// A function that returns a [`Collect`] that will write to either stdout or stderr:
+/// A function that returns a [`Subscriber`] that will write to either stdout or stderr:
 ///
 /// ```rust
-/// # use tracing::Collect;
+/// # use tracing::Subscriber;
 /// # use tracing_subscriber::fmt::writer::BoxMakeWriter;
 ///
-/// fn dynamic_writer(use_stderr: bool) -> impl Collect {
+/// fn dynamic_writer(use_stderr: bool) -> impl Subscriber {
 ///     let writer = if use_stderr {
 ///         BoxMakeWriter::new(std::io::stderr)
 ///     } else {
@@ -537,7 +536,8 @@ pub struct TestWriter {
 /// }
 /// ```
 ///
-/// [`Collect`]: tracing::Collect
+/// [`Subscriber`]: tracing::Subscriber
+/// [`io::Write`]: std::io::Write
 pub struct BoxMakeWriter {
     inner: Box<dyn for<'a> MakeWriter<'a, Writer = Box<dyn Write + 'a>> + Send + Sync>,
     name: &'static str,
@@ -569,7 +569,7 @@ pub type OptionalWriter<T> = EitherWriter<T, std::io::Sink>;
 /// A [`MakeWriter`] combinator that only returns an enabled [writer] for spans
 /// and events with metadata at or below a specified verbosity [`Level`].
 ///
-/// This is returned by the [`MakeWriterExt::with_max_level] method. See the
+/// This is returned by the [`MakeWriterExt::with_max_level`] method. See the
 /// method documentation for details.
 ///
 /// [writer]: std::io::Write
@@ -583,7 +583,7 @@ pub struct WithMaxLevel<M> {
 /// A [`MakeWriter`] combinator that only returns an enabled [writer] for spans
 /// and events with metadata at or above a specified verbosity [`Level`].
 ///
-/// This is returned by the [`MakeWriterExt::with_min_level] method. See the
+/// This is returned by the [`MakeWriterExt::with_min_level`] method. See the
 /// method documentation for details.
 ///
 /// [writer]: std::io::Write
@@ -596,13 +596,15 @@ pub struct WithMinLevel<M> {
 
 /// A [`MakeWriter`] combinator that wraps a [`MakeWriter`] with a predicate for
 /// span and event [`Metadata`], so that the [`MakeWriter::make_writer_for`]
-/// method returns [`OptionalWriter::some`] when the predicate returns `true`,
-/// and [`OptionalWriter::none`] when the predicate returns `false`.
+/// method returns [`OptionalWriter::some`][ows] when the predicate returns `true`,
+/// and [`OptionalWriter::none`][own] when the predicate returns `false`.
 ///
 /// This is returned by the [`MakeWriterExt::with_filter`] method. See the
 /// method documentation for details.
 ///
 /// [`Metadata`]: tracing_core::Metadata
+/// [ows]: EitherWriter::some
+/// [own]: EitherWriter::none
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct WithFilter<M, F> {
     make: M,
@@ -611,10 +613,12 @@ pub struct WithFilter<M, F> {
 
 /// Combines a [`MakeWriter`] that returns an [`OptionalWriter`] with another
 /// [`MakeWriter`], so that the second [`MakeWriter`] is used when the first
-/// [`MakeWriter`] returns [`OptionalWriter::none`].
+/// [`MakeWriter`] returns [`OptionalWriter::none`][own].
 ///
 /// This is returned by the [`MakeWriterExt::or_else] method. See the
 /// method documentation for details.
+///
+/// [own]: EitherWriter::none
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct OrElse<A, B> {
     inner: A,
@@ -631,6 +635,27 @@ pub struct Tee<A, B> {
     a: A,
     b: B,
 }
+
+/// A type implementing [`io::Write`] for a [`MutexGuard`] where the type
+/// inside the [`Mutex`] implements [`io::Write`].
+///
+/// This is used by the [`MakeWriter`] implementation for [`Mutex`], because
+/// [`MutexGuard`] itself will not implement [`io::Write`] — instead, it
+/// _dereferences_ to a type implementing [`io::Write`]. Because [`MakeWriter`]
+/// requires the `Writer` type to implement [`io::Write`], it's necessary to add
+/// a newtype that forwards the trait implementation.
+///
+/// [`io::Write`]: std::io::Write
+/// [`MutexGuard`]: std::sync::MutexGuard
+/// [`Mutex`]: std::sync::Mutex
+#[derive(Debug)]
+pub struct MutexGuardWriter<'a, W>(MutexGuard<'a, W>);
+
+/// Implements [`std::io::Write`] for an [`Arc`]<W> where `&W: Write`.
+///
+/// This is an implementation detail of the [`MakeWriter`] impl for [`Arc`].
+#[derive(Clone, Debug)]
+pub struct ArcWriter<W>(Arc<W>);
 
 /// A bridge between `fmt::Write` and `io::Write`.
 ///
@@ -653,6 +678,16 @@ where
 
     fn make_writer(&'a self) -> Self::Writer {
         (self)()
+    }
+}
+
+impl<'a, W> MakeWriter<'a> for Arc<W>
+where
+    &'a W: io::Write + 'a,
+{
+    type Writer = &'a W;
+    fn make_writer(&'a self) -> Self::Writer {
+        self
     }
 }
 
@@ -719,10 +754,12 @@ impl fmt::Debug for BoxMakeWriter {
 impl<'a> MakeWriter<'a> for BoxMakeWriter {
     type Writer = Box<dyn Write + 'a>;
 
+    #[inline]
     fn make_writer(&'a self) -> Self::Writer {
         self.inner.make_writer()
     }
 
+    #[inline]
     fn make_writer_for(&'a self, meta: &Metadata<'_>) -> Self::Writer {
         self.inner.make_writer_for(meta)
     }
@@ -1095,6 +1132,38 @@ where
     }
 }
 
+// === impl ArcWriter ===
+
+impl<W> io::Write for ArcWriter<W>
+where
+    for<'a> &'a W: io::Write,
+{
+    #[inline]
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        (&*self.0).write(buf)
+    }
+
+    #[inline]
+    fn flush(&mut self) -> io::Result<()> {
+        (&*self.0).flush()
+    }
+
+    #[inline]
+    fn write_vectored(&mut self, bufs: &[io::IoSlice<'_>]) -> io::Result<usize> {
+        (&*self.0).write_vectored(bufs)
+    }
+
+    #[inline]
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+        (&*self.0).write_all(buf)
+    }
+
+    #[inline]
+    fn write_fmt(&mut self, fmt: std::fmt::Arguments<'_>) -> io::Result<()> {
+        (&*self.0).write_fmt(fmt)
+    }
+}
+
 // === impl WriteAdaptor ===
 
 #[cfg(any(feature = "json", feature = "time"))]
@@ -1135,11 +1204,11 @@ mod test {
     use super::*;
     use crate::fmt::format::Format;
     use crate::fmt::test::{MockMakeWriter, MockWriter};
-    use crate::fmt::Collector;
+    use crate::fmt::Subscriber;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{Arc, Mutex};
     use tracing::{debug, error, info, trace, warn, Level};
-    use tracing_core::dispatch::{self, Dispatch};
+    use tracing_core::dispatcher::{self, Dispatch};
 
     fn test_writer<T>(make_writer: T, msg: &str, buf: &Mutex<Vec<u8>>)
     where
@@ -1150,14 +1219,14 @@ mod test {
             let f = Format::default().without_time().with_ansi(false);
             #[cfg(not(feature = "ansi"))]
             let f = Format::default().without_time();
-            Collector::builder()
+            Subscriber::builder()
                 .event_format(f)
                 .with_writer(make_writer)
                 .finish()
         };
         let dispatch = Dispatch::from(subscriber);
 
-        dispatch::with_default(&dispatch, || {
+        dispatcher::with_default(&dispatch, || {
             error!("{}", msg);
         });
 
@@ -1230,14 +1299,14 @@ mod test {
             let f = Format::default().without_time().with_ansi(false);
             #[cfg(not(feature = "ansi"))]
             let f = Format::default().without_time();
-            Collector::builder()
+            Subscriber::builder()
                 .event_format(f)
                 .with_writer(make_writer)
                 .with_max_level(Level::TRACE)
                 .finish()
         };
 
-        let _s = tracing::collect::set_default(c);
+        let _s = tracing::subscriber::set_default(c);
 
         trace!("trace");
         debug!("debug");
@@ -1288,14 +1357,14 @@ mod test {
             let f = Format::default().without_time().with_ansi(false);
             #[cfg(not(feature = "ansi"))]
             let f = Format::default().without_time();
-            Collector::builder()
+            Subscriber::builder()
                 .event_format(f)
                 .with_writer(make_writer)
                 .with_max_level(Level::TRACE)
                 .finish()
         };
 
-        let _s = tracing::collect::set_default(c);
+        let _s = tracing::subscriber::set_default(c);
         info!("hello");
         info!("world");
         info!("goodbye");
@@ -1333,14 +1402,14 @@ mod test {
             let f = Format::default().without_time().with_ansi(false);
             #[cfg(not(feature = "ansi"))]
             let f = Format::default().without_time();
-            Collector::builder()
+            Subscriber::builder()
                 .event_format(f)
                 .with_writer(make_writer)
                 .with_max_level(Level::TRACE)
                 .finish()
         };
 
-        let _s = tracing::collect::set_default(c);
+        let _s = tracing::subscriber::set_default(c);
 
         trace!("trace");
         debug!("debug");
@@ -1377,14 +1446,14 @@ mod test {
             let f = Format::default().without_time().with_ansi(false);
             #[cfg(not(feature = "ansi"))]
             let f = Format::default().without_time();
-            Collector::builder()
+            Subscriber::builder()
                 .event_format(f)
                 .with_writer(make_writer)
                 .with_max_level(Level::TRACE)
                 .finish()
         };
 
-        let _s = tracing::collect::set_default(c);
+        let _s = tracing::subscriber::set_default(c);
         info!("hello");
         info!("world");
 

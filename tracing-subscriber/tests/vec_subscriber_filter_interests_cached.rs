@@ -3,16 +3,13 @@ use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
-use tracing::{Collect, Level};
-use tracing_mock::{
-    expect,
-    subscriber::{self, MockSubscriber},
-};
+use tracing::{Level, Subscriber};
+use tracing_mock::{layer::MockLayer, *};
 use tracing_subscriber::{filter, prelude::*};
 
 #[test]
-fn vec_subscriber_filter_interests_are_cached() {
-    let mk_filtered = |level: Level, subscriber: MockSubscriber| {
+fn vec_layer_filter_interests_are_cached() {
+    let mk_filtered = |level: Level, subscriber: MockLayer| {
         let seen = Arc::new(Mutex::new(HashMap::new()));
         let filter = filter::filter_fn({
             let seen = seen.clone();
@@ -24,8 +21,8 @@ fn vec_subscriber_filter_interests_are_cached() {
         (subscriber.with_filter(filter).boxed(), seen)
     };
 
-    // This subscriber will return Interest::always for INFO and lower.
-    let (info_subscriber, info_handle) = subscriber::named("info")
+    // This layer will return Interest::always for INFO and lower.
+    let (info_layer, info_handle) = layer::named("info")
         .event(expect::event().at_level(Level::INFO))
         .event(expect::event().at_level(Level::WARN))
         .event(expect::event().at_level(Level::ERROR))
@@ -34,22 +31,22 @@ fn vec_subscriber_filter_interests_are_cached() {
         .event(expect::event().at_level(Level::ERROR))
         .only()
         .run_with_handle();
-    let (info_subscriber, seen_info) = mk_filtered(Level::INFO, info_subscriber);
+    let (info_layer, seen_info) = mk_filtered(Level::INFO, info_layer);
 
-    // This subscriber will return Interest::always for WARN and lower.
-    let (warn_subscriber, warn_handle) = subscriber::named("warn")
+    // This layer will return Interest::always for WARN and lower.
+    let (warn_layer, warn_handle) = layer::named("warn")
         .event(expect::event().at_level(Level::WARN))
         .event(expect::event().at_level(Level::ERROR))
         .event(expect::event().at_level(Level::WARN))
         .event(expect::event().at_level(Level::ERROR))
         .only()
         .run_with_handle();
-    let (warn_subscriber, seen_warn) = mk_filtered(Level::WARN, warn_subscriber);
+    let (warn_layer, seen_warn) = mk_filtered(Level::WARN, warn_layer);
 
-    let collector = tracing_subscriber::registry().with(vec![warn_subscriber, info_subscriber]);
-    assert!(collector.max_level_hint().is_none());
+    let subscriber = tracing_subscriber::registry().with(vec![warn_layer, info_layer]);
+    assert!(subscriber.max_level_hint().is_none());
 
-    let _collector = collector.set_default();
+    let _subscriber = subscriber.set_default();
 
     fn events() {
         tracing::trace!("hello trace");

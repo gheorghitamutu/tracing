@@ -35,7 +35,7 @@ fn log_is_enabled() {
     let filter: EnvFilter = "filter_log::my_module=info"
         .parse()
         .expect("filter should parse");
-    let (collector, finished) = collector::mock()
+    let (subscriber, finished) = subscriber::mock()
         .event(expect::event().at_level(Level::INFO))
         .event(expect::event().at_level(Level::WARN))
         .event(expect::event().at_level(Level::ERROR))
@@ -44,7 +44,7 @@ fn log_is_enabled() {
 
     // Note: we have to set the global default in order to set the `log` max
     // level, which can only be set once.
-    collector.with(filter).init();
+    subscriber.with(filter).init();
 
     my_module::test_records();
     log::info!("this is disabled");

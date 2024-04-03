@@ -7,7 +7,7 @@
 //! a dedicated logging thread. It also provides a [`RollingFileAppender`][file_appender] that can
 //! be used with _or_ without the non-blocking writer.
 //!
-//! *Compiler support: [requires `rustc` 1.51+][msrv]*
+//! *Compiler support: [requires `rustc` 1.63+][msrv]*
 //!
 //! [msrv]: #supported-rust-versions
 //! [file_appender]: rolling::RollingFileAppender
@@ -17,13 +17,13 @@
 //!
 //! Add the following to your `Cargo.toml`:
 //! ```toml
-//! tracing-appender = "0.1"
+//! tracing-appender = "0.2"
 //! ```
 //!
 //! This crate can be used in a few ways to record spans/events:
-//!  - Using a [`RollingFileAppender`] to perform writes to a log file. This will block on writes.
+//!  - Using a [`RollingFileAppender`][rolling_struct] to perform writes to a log file. This will block on writes.
 //!  - Using *any* type implementing [`std::io::Write`][write] in a non-blocking fashion.
-//!  - Using a combination of [`NonBlocking`] and [`RollingFileAppender`] to allow writes to a log file
+//!  - Using a combination of [`NonBlocking`][non_blocking] and [`RollingFileAppender`][rolling_struct] to allow writes to a log file
 //! without blocking.
 //!
 //! ## File Appender
@@ -102,11 +102,11 @@
 //!
 //! The [`non_blocking` module][non_blocking]'s documentation provides more detail on how to use `non_blocking`.
 //!
-//! [write]: std::io::Write
 //! [non_blocking]: mod@non_blocking
+//! [write]: std::io::Write
 //! [guard]: non_blocking::WorkerGuard
 //! [make_writer]: tracing_subscriber::fmt::MakeWriter
-//! [`RollingFileAppender`]: rolling::RollingFileAppender
+//! [rolling_struct]: rolling::RollingFileAppender
 //! [fmt_subscriber]: tracing_subscriber::fmt::Subscriber
 //!
 //! ## Non-Blocking Rolling File Appender
@@ -124,7 +124,7 @@
 //! ## Supported Rust Versions
 //!
 //! `tracing-appender` is built against the latest stable release. The minimum supported
-//! version is 1.51. The current `tracing-appender` version is not guaranteed to build on
+//! version is 1.63. The current `tracing-appender` version is not guaranteed to build on
 //! Rust versions earlier than the minimum supported version.
 //!
 //! Tracing follows the same compiler support policies as the rest of the Tokio
@@ -137,9 +137,9 @@
 //!
 #![doc(
     html_logo_url = "https://raw.githubusercontent.com/tokio-rs/tracing/master/assets/logo-type.png",
-    html_favicon_url = "https://raw.githubusercontent.com/tokio-rs/tracing/master/assets/favicon.ico",
     issue_tracker_base_url = "https://github.com/tokio-rs/tracing/issues/"
 )]
+#![cfg_attr(docsrs, deny(rustdoc::broken_intra_doc_links))]
 #![warn(
     missing_debug_implementations,
     missing_docs,
@@ -153,8 +153,7 @@
     overflowing_literals,
     path_statements,
     patterns_in_fns_without_body,
-    private_interfaces,
-    private_bounds,
+    private_in_public,
     unconditional_recursion,
     unused,
     unused_allocation,
@@ -176,7 +175,9 @@ pub(crate) mod sync;
 
 /// Convenience function for creating a non-blocking, off-thread writer.
 ///
-/// See the [`non_blocking` module's docs][mod@non_blocking]'s for more details.
+/// See the [`non_blocking` module's docs][non_blocking]'s for more details.
+///
+/// [non_blocking]: mod@non_blocking
 ///
 /// # Examples
 ///
@@ -184,7 +185,7 @@ pub(crate) mod sync;
 /// # fn docs() {
 /// let (non_blocking, _guard) = tracing_appender::non_blocking(std::io::stdout());
 /// let subscriber = tracing_subscriber::fmt().with_writer(non_blocking);
-/// tracing::collect::with_default(subscriber.finish(), || {
+/// tracing::subscriber::with_default(subscriber.finish(), || {
 ///    tracing::event!(tracing::Level::INFO, "Hello");
 /// });
 /// # }

@@ -1,14 +1,14 @@
 use super::*;
 use crate::{
     field::{VisitFmt, VisitOutput},
-    fmt::fmt_subscriber::{FmtContext, FormattedFields},
+    fmt::fmt_layer::{FmtContext, FormattedFields},
     registry::LookupSpan,
 };
 
 use std::fmt;
 use tracing_core::{
     field::{self, Field},
-    Collect, Event, Level,
+    Event, Level, Subscriber,
 };
 
 #[cfg(feature = "tracing-log")]
@@ -168,7 +168,7 @@ impl Pretty {
 
 impl<C, N, T> FormatEvent<C, N> for Format<Pretty, T>
 where
-    C: Collect + for<'a> LookupSpan<'a>,
+    C: Subscriber + for<'a> LookupSpan<'a>,
     N: for<'a> FormatFields<'a> + 'static,
     T: FormatTime,
 {
@@ -186,6 +186,14 @@ where
         let meta = event.metadata();
         write!(&mut writer, "  ")?;
 
+        // if the `Format` struct *also* has an ANSI color configuration,
+        // override the writer...the API for configuring ANSI color codes on the
+        // `Format` struct is deprecated, but we still need to honor those
+        // configurations.
+        if let Some(ansi) = self.ansi {
+            writer = writer.with_ansi(ansi);
+        }
+
         self.format_timestamp(&mut writer)?;
 
         let style = if self.display_level && writer.has_ansi_escapes() {
@@ -195,7 +203,11 @@ where
         };
 
         if self.display_level {
-            self.format_level(*meta.level(), &mut writer)?;
+            write!(
+                writer,
+                "{} ",
+                super::FmtLevel::new(meta.level(), writer.has_ansi_escapes())
+            )?;
         }
 
         if self.display_target {
@@ -362,7 +374,7 @@ impl PrettyFields {
     /// Enable ANSI encoding for formatted fields.
     #[deprecated(
         since = "0.3.3",
-        note = "Use `fmt::Subscriber::with_ansi` or `fmt::Collector::with_ansi` instead."
+        note = "Use `fmt::Subscriber::with_ansi` or `fmt::Layer::with_ansi` instead."
     )]
     pub fn with_ansi(self, ansi: bool) -> Self {
         Self {

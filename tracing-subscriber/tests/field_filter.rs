@@ -1,6 +1,6 @@
 #![cfg(feature = "env-filter")]
 
-use tracing::{self, collect::with_default, Level};
+use tracing::{self, subscriber::with_default, Level};
 use tracing_mock::*;
 use tracing_subscriber::{filter::EnvFilter, prelude::*};
 
@@ -8,7 +8,7 @@ use tracing_subscriber::{filter::EnvFilter, prelude::*};
 #[cfg_attr(not(flaky_tests), ignore)]
 fn field_filter_events() {
     let filter: EnvFilter = "[{thing}]=debug".parse().expect("filter should parse");
-    let (subscriber, finished) = collector::mock()
+    let (subscriber, finished) = subscriber::mock()
         .event(
             expect::event()
                 .at_level(Level::INFO)
@@ -40,7 +40,7 @@ fn field_filter_spans() {
     let filter: EnvFilter = "[{enabled=true}]=debug"
         .parse()
         .expect("filter should parse");
-    let (subscriber, finished) = collector::mock()
+    let (subscriber, finished) = subscriber::mock()
         .enter(expect::span().named("span1"))
         .event(
             expect::event()
@@ -83,7 +83,7 @@ fn record_after_created() {
     let filter: EnvFilter = "[{enabled=true}]=debug"
         .parse()
         .expect("filter should parse");
-    let (subscriber, finished) = collector::mock()
+    let (subscriber, finished) = subscriber::mock()
         .enter(expect::span().named("span"))
         .exit(expect::span().named("span"))
         .record(

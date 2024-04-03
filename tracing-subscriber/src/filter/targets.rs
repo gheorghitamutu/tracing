@@ -4,14 +4,14 @@
 //!
 //! [target]: tracing_core::Metadata::target
 //! [level]: tracing_core::Level
-//! [filter]: crate::subscribe#filtering-with-subscribers
+//! [filter]: crate::layer#filtering-with-layers
 
 use crate::{
     filter::{
         directive::{DirectiveSet, ParseError, StaticDirective},
         LevelFilter,
     },
-    subscribe,
+    layer,
 };
 #[cfg(not(feature = "std"))]
 use alloc::string::String;
@@ -21,7 +21,7 @@ use core::{
     slice,
     str::FromStr,
 };
-use tracing_core::{Collect, Interest, Level, Metadata};
+use tracing_core::{Interest, Level, Metadata, Subscriber};
 
 /// A filter that enables or disables spans and events based on their [target]
 /// and [level].
@@ -29,11 +29,11 @@ use tracing_core::{Collect, Interest, Level, Metadata};
 /// Targets are typically equal to the Rust module path of the code where the
 /// span or event was recorded, although they may be overridden.
 ///
-/// This type can be used for both [per-subscriber filtering][plf] (using its
+/// This type can be used for both [per-layer filtering][plf] (using its
 /// [`Filter`] implementation) and [global filtering][global] (using its
-/// [`Subscribe`] implementation).
+/// [`Layer`] implementation).
 ///
-/// See the [documentation on filtering with subscribers][filtering] for details.
+/// See the [documentation on filtering with layers][filtering] for details.
 ///
 /// # Filtering With `Targets`
 ///
@@ -66,10 +66,10 @@ use tracing_core::{Collect, Interest, Level, Metadata};
 ///     // Enable the `DEBUG` level for a specific module.
 ///     .with_target("my_crate::interesting_module", Level::DEBUG);
 ///
-/// // Build a new collector with the `fmt` subscriber using the `Targets`
+/// // Build a new subscriber with the `fmt` layer using the `Targets`
 /// // filter we constructed above.
 /// tracing_subscriber::registry()
-///     .with(tracing_subscriber::fmt::subscriber())
+///     .with(tracing_subscriber::fmt::layer())
 ///     .with(filter)
 ///     .init();
 /// ```
@@ -111,7 +111,7 @@ use tracing_core::{Collect, Interest, Level, Metadata};
 /// This is particularly useful when the list of enabled targets is configurable
 /// by the user at runtime.
 ///
-/// The `Targets` filter can be used as a [per-subscriber filter][plf] *and* as a
+/// The `Targets` filter can be used as a [per-layer filter][plf] *and* as a
 /// [global filter][global]:
 ///
 /// ```rust
@@ -121,17 +121,17 @@ use tracing_core::{Collect, Interest, Level, Metadata};
 ///     prelude::*,
 /// };
 /// use tracing_core::Level;
-/// use std::fs::File;
+/// use std::{sync::Arc, fs::File};
 /// # fn docs() -> Result<(), Box<dyn std::error::Error>> {
 ///
-/// // A subscriber that logs events to stdout using the human-readable "pretty"
+/// // A layer that logs events to stdout using the human-readable "pretty"
 /// // format.
-/// let stdout_log = fmt::subscriber().pretty();
+/// let stdout_log = fmt::layer().pretty();
 ///
-/// // A subscriber that logs events to a file, using the JSON format.
+/// // A layer that logs events to a file, using the JSON format.
 /// let file = File::create("debug_log.json")?;
-/// let debug_log = fmt::subscriber()
-///     .with_writer(file)
+/// let debug_log = fmt::layer()
+///     .with_writer(Arc::new(file))
 ///     .json();
 ///
 /// tracing_subscriber::registry()
@@ -148,8 +148,8 @@ use tracing_core::{Collect, Interest, Level, Metadata};
 ///     .with(debug_log)
 ///     // Configure a global filter for the whole subscriber stack. This will
 ///     // control what spans and events are recorded by both the `debug_log`
-///     // and the `stdout_log` subscribers, and `stdout_log` will *additionally* be
-///     // filtered by its per-subscriber filter.
+///     // and the `stdout_log` layers, and `stdout_log` will *additionally* be
+///     // filtered by its per-layer filter.
 ///     .with(
 ///         Targets::default()
 ///             .with_target("my_crate", Level::TRACE)
@@ -162,11 +162,11 @@ use tracing_core::{Collect, Interest, Level, Metadata};
 ///
 /// [target]: tracing_core::Metadata::target
 /// [level]: tracing_core::Level
-/// [`Filter`]: crate::subscribe::Filter
-/// [`Subscribe`]: crate::subscribe::Subscribe
-/// [plf]: crate::subscribe#per-subscriber-filtering
-/// [global]: crate::subscribe#global-filtering
-/// [filtering]: crate::subscribe#filtering-with-subscribers
+/// [`Filter`]: crate::layer::Filter
+/// [`Layer`]: crate::layer::Layer
+/// [plf]: crate::layer#per-layer-filtering
+/// [global]: crate::layer#global-filtering
+/// [filtering]: crate::layer#filtering-with-layers
 /// [`env_logger` crate]: https://docs.rs/env_logger/0.9.0/env_logger/index.html#enabling-logging
 /// [`EnvFilter`]: crate::filter::EnvFilter
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -436,11 +436,11 @@ impl FromStr for Targets {
     }
 }
 
-impl<C> subscribe::Subscribe<C> for Targets
+impl<S> layer::Layer<S> for Targets
 where
-    C: Collect,
+    S: Subscriber,
 {
-    fn enabled(&self, metadata: &Metadata<'_>, _: subscribe::Context<'_, C>) -> bool {
+    fn enabled(&self, metadata: &Metadata<'_>, _: layer::Context<'_, S>) -> bool {
         self.0.enabled(metadata)
     }
 
@@ -455,8 +455,8 @@ where
 
 #[cfg(feature = "registry")]
 #[cfg_attr(docsrs, doc(cfg(feature = "registry")))]
-impl<C> subscribe::Filter<C> for Targets {
-    fn enabled(&self, metadata: &Metadata<'_>, _: &subscribe::Context<'_, C>) -> bool {
+impl<S> layer::Filter<S> for Targets {
+    fn enabled(&self, metadata: &Metadata<'_>, _: &layer::Context<'_, S>) -> bool {
         self.0.enabled(metadata)
     }
 

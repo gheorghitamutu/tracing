@@ -3,7 +3,7 @@
 use core::fmt;
 #[cfg(feature = "std")]
 use std::error::Error;
-use tracing_core::dispatch::{self, Dispatch};
+use tracing_core::dispatcher::{self, Dispatch};
 #[cfg(feature = "tracing-log")]
 use tracing_log::AsLog;
 
@@ -12,14 +12,14 @@ use tracing_log::AsLog;
 /// This trait provides extension methods to make configuring and setting a
 /// [default subscriber] more ergonomic. It is automatically implemented for all
 /// types that can be converted into a [trace dispatcher]. Since `Dispatch`
-/// implements `From<T>` for all `T: Collector`, all `Collector`
+/// implements `From<T>` for all `T: Subscriber`, all `Subscriber`
 /// implementations will implement this extension trait as well. Types which
-/// can be converted into `Collector`s, such as builders that construct a
-/// `Collector`, may implement `Into<Dispatch>`, and will also receive an
+/// can be converted into `Subscriber`s, such as builders that construct a
+/// `Subscriber`, may implement `Into<Dispatch>`, and will also receive an
 /// implementation of this trait.
 ///
-/// [default subscriber]: tracing::dispatch#setting-the-default-collector
-/// [trace dispatcher]: tracing::dispatch
+/// [default subscriber]: https://docs.rs/tracing/0.1.21/tracing/dispatcher/index.html#setting-the-default-subscriber
+/// [trace dispatcher]: https://docs.rs/tracing/0.1.21/tracing/dispatcher/index.html
 pub trait SubscriberInitExt
 where
     Self: Into<Dispatch>,
@@ -28,35 +28,35 @@ where
     /// guard that will unset it when dropped.
     ///
     /// If the "tracing-log" feature flag is enabled, this will also initialize
-    /// a [`log`] compatibility subscriber. This allows the subscriber to consume
+    /// a [`log`] compatibility layer. This allows the subscriber to consume
     /// `log::Record`s as though they were `tracing` `Event`s.
     ///
-    /// [default subscriber]: tracing::dispatch#setting-the-default-collector
+    /// [default subscriber]: https://docs.rs/tracing/0.1.21/tracing/dispatcher/index.html#setting-the-default-subscriber
     /// [`log`]: https://crates.io/log
     #[cfg(feature = "std")]
     #[cfg_attr(docsrs, doc(cfg(feature = "std")))]
-    fn set_default(self) -> dispatch::DefaultGuard {
+    fn set_default(self) -> dispatcher::DefaultGuard {
         #[cfg(feature = "tracing-log")]
         let _ = tracing_log::LogTracer::init();
 
-        dispatch::set_default(&self.into())
+        dispatcher::set_default(&self.into())
     }
 
     /// Attempts to set `self` as the [global default subscriber] in the current
     /// scope, returning an error if one is already set.
     ///
     /// If the "tracing-log" feature flag is enabled, this will also attempt to
-    /// initialize a [`log`] compatibility subscriber. This allows the subscriber to
+    /// initialize a [`log`] compatibility layer. This allows the subscriber to
     /// consume `log::Record`s as though they were `tracing` `Event`s.
     ///
     /// This method returns an error if a global default subscriber has already
     /// been set, or if a `log` logger has already been set (when the
     /// "tracing-log" feature is enabled).
     ///
-    /// [global default subscriber]: tracing::dispatch#setting-the-default-collector
+    /// [global default subscriber]: https://docs.rs/tracing/0.1.21/tracing/dispatcher/index.html#setting-the-default-subscriber
     /// [`log`]: https://crates.io/log
     fn try_init(self) -> Result<(), TryInitError> {
-        dispatch::set_global_default(self.into()).map_err(TryInitError::new)?;
+        dispatcher::set_global_default(self.into()).map_err(TryInitError::new)?;
 
         // Since we are setting the global default subscriber, we can
         // opportunistically go ahead and set its global max level hint as
@@ -77,14 +77,14 @@ where
     /// scope, panicking if this fails.
     ///
     /// If the "tracing-log" feature flag is enabled, this will also attempt to
-    /// initialize a [`log`] compatibility subscriber. This allows the subscriber to
+    /// initialize a [`log`] compatibility layer. This allows the subscriber to
     /// consume `log::Record`s as though they were `tracing` `Event`s.
     ///
     /// This method panics if a global default subscriber has already been set,
     /// or if a `log` logger has already been set (when the "tracing-log"
     /// feature is enabled).
     ///
-    /// [global default subscriber]: tracing::dispatch#setting-the-default-collector
+    /// [global default subscriber]: https://docs.rs/tracing/0.1.21/tracing/dispatcher/index.html#setting-the-default-subscriber
     /// [`log`]: https://crates.io/log
     fn init(self) {
         self.try_init()

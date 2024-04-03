@@ -1,8 +1,8 @@
 #![cfg(feature = "registry")]
 
 use std::sync::{Arc, Mutex};
-use tracing::{collect::with_default, Collect, Event, Metadata};
-use tracing_subscriber::{prelude::*, registry, subscribe::Context, Subscribe};
+use tracing::{subscriber::with_default, Event, Metadata, Subscriber};
+use tracing_subscriber::{layer::Context, prelude::*, registry, Layer};
 
 struct TrackingLayer {
     enabled: bool,
@@ -11,9 +11,9 @@ struct TrackingLayer {
     on_event_count: Arc<Mutex<usize>>,
 }
 
-impl<C> Subscribe<C> for TrackingLayer
+impl<C> Layer<C> for TrackingLayer
 where
-    C: Collect + Send + Sync + 'static,
+    C: Subscriber + Send + Sync + 'static,
 {
     fn enabled(&self, _metadata: &Metadata<'_>, _ctx: Context<'_, C>) -> bool {
         self.enabled
@@ -33,13 +33,13 @@ where
 fn event_enabled_is_only_called_once() {
     let event_enabled_count = Arc::new(Mutex::default());
     let count = event_enabled_count.clone();
-    let collector = registry().with(TrackingLayer {
+    let subscriber = registry().with(TrackingLayer {
         enabled: true,
         event_enabled_count,
         event_enabled: true,
         on_event_count: Arc::new(Mutex::default()),
     });
-    with_default(collector, || {
+    with_default(subscriber, || {
         tracing::error!("hiya!");
     });
 
@@ -50,13 +50,13 @@ fn event_enabled_is_only_called_once() {
 fn event_enabled_not_called_when_not_enabled() {
     let event_enabled_count = Arc::new(Mutex::default());
     let count = event_enabled_count.clone();
-    let collector = registry().with(TrackingLayer {
+    let subscriber = registry().with(TrackingLayer {
         enabled: false,
         event_enabled_count,
         event_enabled: true,
         on_event_count: Arc::new(Mutex::default()),
     });
-    with_default(collector, || {
+    with_default(subscriber, || {
         tracing::error!("hiya!");
     });
 
@@ -67,13 +67,13 @@ fn event_enabled_not_called_when_not_enabled() {
 fn event_disabled_does_disable_event() {
     let on_event_count = Arc::new(Mutex::default());
     let count = on_event_count.clone();
-    let collector = registry().with(TrackingLayer {
+    let subscriber = registry().with(TrackingLayer {
         enabled: true,
         event_enabled_count: Arc::new(Mutex::default()),
         event_enabled: false,
         on_event_count,
     });
-    with_default(collector, || {
+    with_default(subscriber, || {
         tracing::error!("hiya!");
     });
 

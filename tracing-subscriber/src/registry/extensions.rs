@@ -68,24 +68,22 @@ impl<'a> ExtensionsMut<'a> {
     /// Insert a type into this `Extensions`.
     ///
     /// Note that extensions are _not_
-    /// [subscriber]-specific—they are _span_-specific. This means that
-    /// other subscribers can access and mutate extensions that
-    /// a different Subscriber recorded. For example, an application might
-    /// have a subscriber that records execution timings, alongside a subscriber
+    /// `Layer`-specific—they are _span_-specific. This means that
+    /// other layers can access and mutate extensions that
+    /// a different Layer recorded. For example, an application might
+    /// have a layer that records execution timings, alongside a layer
     /// that reports spans and events to a distributed
     /// tracing system that requires timestamps for spans.
-    /// Ideally, if one subscriber records a timestamp _x_, the other subscriber
+    /// Ideally, if one layer records a timestamp _x_, the other layer
     /// should be able to reuse timestamp _x_.
     ///
     /// Therefore, extensions should generally be newtypes, rather than common
     /// types like [`String`](std::string::String), to avoid accidental
-    /// cross-`Subscriber` clobbering.
+    /// cross-`Layer` clobbering.
     ///
     /// ## Panics
     ///
     /// If `T` is already present in `Extensions`, then this method will panic.
-    ///
-    /// [subscriber]: crate::subscribe::Subscribe
     pub fn insert<T: Send + Sync + 'static>(&mut self, val: T) {
         assert!(self.replace(val).is_none())
     }
@@ -112,8 +110,8 @@ impl<'a> ExtensionsMut<'a> {
 
 /// A type map of span extensions.
 ///
-/// [ExtensionsInner] is used by [Data] to store and
-/// span-specific data. A given [Subscriber] can read and write
+/// [ExtensionsInner] is used by `SpanData` to store and
+/// span-specific data. A given `Layer` can read and write
 /// data that it is interested in recording and emitting.
 #[derive(Default)]
 pub(crate) struct ExtensionsInner {
@@ -124,6 +122,7 @@ impl ExtensionsInner {
     /// Create an empty `Extensions`.
     #[cfg(any(test, feature = "registry"))]
     #[inline]
+    #[cfg(any(test, feature = "registry"))]
     pub(crate) fn new() -> ExtensionsInner {
         ExtensionsInner {
             map: AnyMap::default(),
@@ -140,7 +139,7 @@ impl ExtensionsInner {
             .and_then(|boxed| {
                 #[allow(warnings)]
                 {
-                    (boxed as Box<dyn Any + 'static>)
+                    (boxed as Box<Any + 'static>)
                         .downcast()
                         .ok()
                         .map(|boxed| *boxed)
@@ -169,7 +168,7 @@ impl ExtensionsInner {
         self.map.remove(&TypeId::of::<T>()).and_then(|boxed| {
             #[allow(warnings)]
             {
-                (boxed as Box<dyn Any + 'static>)
+                (boxed as Box<Any + 'static>)
                     .downcast()
                     .ok()
                     .map(|boxed| *boxed)

@@ -1,16 +1,16 @@
 #![cfg(feature = "registry")]
-use tracing_core::{collect::Interest, Collect, LevelFilter, Metadata};
-use tracing_subscriber::{prelude::*, subscribe};
+use tracing_core::{subscriber::Interest, LevelFilter, Metadata, Subscriber};
+use tracing_subscriber::{layer, prelude::*};
 
 // A basic layer that returns its inner for `max_level_hint`
 #[derive(Debug)]
 struct BasicLayer(Option<LevelFilter>);
-impl<C: Collect> tracing_subscriber::Subscribe<C> for BasicLayer {
+impl<S: Subscriber> tracing_subscriber::Layer<S> for BasicLayer {
     fn register_callsite(&self, _m: &Metadata<'_>) -> Interest {
         Interest::sometimes()
     }
 
-    fn enabled(&self, _m: &Metadata<'_>, _: subscribe::Context<'_, C>) -> bool {
+    fn enabled(&self, _m: &Metadata<'_>, _: layer::Context<'_, S>) -> bool {
         true
     }
 
@@ -21,39 +21,40 @@ impl<C: Collect> tracing_subscriber::Subscribe<C> for BasicLayer {
 
 // This test is just used to compare to the tests below
 #[test]
-fn just_subscriber() {
-    let collector = tracing_subscriber::registry().with(LevelFilter::INFO);
-    assert_eq!(collector.max_level_hint(), Some(LevelFilter::INFO));
+fn just_layer() {
+    let subscriber = tracing_subscriber::registry().with(LevelFilter::INFO);
+    assert_eq!(subscriber.max_level_hint(), Some(LevelFilter::INFO));
 }
 
 #[test]
-fn subscriber_and_option_some_subscriber() {
-    let collector = tracing_subscriber::registry()
+fn subscriber_and_option_some_layer() {
+    let subscriber = tracing_subscriber::registry()
         .with(LevelFilter::INFO)
         .with(Some(LevelFilter::DEBUG));
-    assert_eq!(collector.max_level_hint(), Some(LevelFilter::DEBUG));
+    assert_eq!(subscriber.max_level_hint(), Some(LevelFilter::DEBUG));
 }
 
 #[test]
-fn subscriber_and_option_none_subscriber() {
+fn subscriber_and_option_none_layer() {
     // None means the other layer takes control
-    let collector = tracing_subscriber::registry()
+    let subscriber = tracing_subscriber::registry()
         .with(LevelFilter::ERROR)
         .with(None::<LevelFilter>);
-    assert_eq!(collector.max_level_hint(), Some(LevelFilter::ERROR));
+    assert_eq!(subscriber.max_level_hint(), Some(LevelFilter::ERROR));
 }
 
 #[test]
-fn just_option_some_subscriber() {
+fn just_option_some_layer() {
     // Just a None means everything is off
-    let collector = tracing_subscriber::registry().with(None::<LevelFilter>);
-    assert_eq!(collector.max_level_hint(), Some(LevelFilter::OFF));
+    let subscriber = tracing_subscriber::registry().with(None::<LevelFilter>);
+    assert_eq!(subscriber.max_level_hint(), Some(LevelFilter::OFF));
 }
 
+/// Tests that the logic tested in `doesnt_override_none` works through the reload subscriber
 #[test]
-fn just_option_none_subscriber() {
-    let collector = tracing_subscriber::registry().with(Some(LevelFilter::ERROR));
-    assert_eq!(collector.max_level_hint(), Some(LevelFilter::ERROR));
+fn just_option_none_layer() {
+    let subscriber = tracing_subscriber::registry().with(Some(LevelFilter::ERROR));
+    assert_eq!(subscriber.max_level_hint(), Some(LevelFilter::ERROR));
 }
 
 // Test that the `None` max level hint only applies if its the only layer
@@ -240,15 +241,13 @@ fn none_inside_doesnt_override_max_level() {
     );
 }
 
-/// Tests that the logic tested in `doesnt_override_none` works through the reload subscriber
+/// Tests that the logic tested in `doesnt_override_none` works through the reload layer
 #[test]
 fn reload_works_with_none() {
-    let (subscriber1, handle1) = tracing_subscriber::reload::Subscriber::new(None::<BasicLayer>);
-    let (subscriber2, _handle2) = tracing_subscriber::reload::Subscriber::new(None::<BasicLayer>);
+    let (layer1, handle1) = tracing_subscriber::reload::Layer::new(None::<BasicLayer>);
+    let (layer2, _handle2) = tracing_subscriber::reload::Layer::new(None::<BasicLayer>);
 
-    let subscriber = tracing_subscriber::registry()
-        .with(subscriber1)
-        .with(subscriber2);
+    let subscriber = tracing_subscriber::registry().with(layer1).with(layer2);
     assert_eq!(subscriber.max_level_hint(), Some(LevelFilter::OFF));
 
     // reloading one should pass through correctly.

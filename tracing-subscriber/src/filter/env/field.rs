@@ -13,7 +13,7 @@ use std::{
 use super::{FieldMap, LevelFilter};
 use tracing_core::field::{Field, Visit};
 
-#[derive(Debug, Eq, PartialEq, Clone)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct Match {
     pub(crate) name: String, // TODO: allow match patterns for names?
     pub(crate) value: Option<ValueMatch>,
@@ -281,7 +281,7 @@ impl fmt::Display for ValueMatch {
 impl FromStr for MatchPattern {
     type Err = matchers::Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let matcher = Pattern::new_anchored(s)?;
+        let matcher = s.parse::<Pattern>()?;
         Ok(Self {
             matcher,
             pattern: s.to_owned().into(),
