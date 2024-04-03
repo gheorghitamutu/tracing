@@ -75,14 +75,16 @@ impl<T: Write + Send + 'static> Worker<T> {
                     match self.work() {
                         Ok(WorkerState::Continue) | Ok(WorkerState::Empty) => {}
                         Ok(WorkerState::Shutdown) | Ok(WorkerState::Disconnected) => {
-                            drop(self.writer); // drop now in case it blocks
                             let _ = self.shutdown.recv();
-                            return;
+                            break;
                         }
                         Err(_) => {
                             // TODO: Expose a metric for IO Errors, or print to stderr
                         }
                     }
+                }
+                if let Err(e) = self.writer.flush() {
+                    eprintln!("Failed to flush. Error: {}", e);
                 }
             })
             .expect("failed to spawn `tracing-appender` non-blocking worker thread")

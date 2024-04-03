@@ -1,5 +1,9 @@
 use crate::filter::level::{self, LevelFilter};
+#[cfg(not(feature = "smallvec"))]
+use alloc::vec;
+#[cfg(not(feature = "std"))]
 use alloc::{string::String, vec::Vec};
+
 use core::{cmp::Ordering, fmt, iter::FromIterator, slice, str::FromStr};
 use tracing_core::{Level, Metadata};
 /// Indicates that a string could not be parsed as a filtering directive.
@@ -122,7 +126,7 @@ impl<T> IntoIterator for DirectiveSet<T> {
     #[cfg(feature = "smallvec")]
     type IntoIter = smallvec::IntoIter<[T; 8]>;
     #[cfg(not(feature = "smallvec"))]
-    type IntoIter = alloc::vec::IntoIter<T>;
+    type IntoIter = vec::IntoIter<T>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.directives.into_iter()
@@ -348,16 +352,21 @@ impl FromStr for StaticDirective {
                     ));
                 }
 
+                if !maybe_fields.ends_with("}]") {
+                    return Err(ParseError::msg("expected fields list to end with '}]'"));
+                }
+
                 let fields = maybe_fields
-                    .strip_suffix("}]")
-                    .ok_or_else(|| ParseError::msg("expected fields list to end with '}]'"))?;
-                field_names.extend(fields.split(',').filter_map(|s| {
-                    if s.is_empty() {
-                        None
-                    } else {
-                        Some(String::from(s))
-                    }
-                }));
+                    .trim_end_matches("}]")
+                    .split(',')
+                    .filter_map(|s| {
+                        if s.is_empty() {
+                            None
+                        } else {
+                            Some(String::from(s))
+                        }
+                    });
+                field_names.extend(fields);
             };
             let level = part1.parse()?;
             return Ok(Self {

@@ -5,19 +5,11 @@ use tracing_subscriber::{field::Visit, prelude::*, subscribe::Filter};
 struct FilterEvent;
 
 impl<S> Filter<S> for FilterEvent {
-    fn enabled(
-        &self,
-        _meta: &tracing::Metadata<'_>,
-        _cx: &tracing_subscriber::subscribe::Context<'_, S>,
-    ) -> bool {
+    fn enabled(&self, _meta: &tracing::Metadata<'_>, _cx: &tracing_subscriber::subscribe::Context<'_, S>) -> bool {
         true
     }
 
-    fn event_enabled(
-        &self,
-        event: &tracing::Event<'_>,
-        _cx: &tracing_subscriber::subscribe::Context<'_, S>,
-    ) -> bool {
+    fn event_enabled(&self, event: &tracing::Event<'_>, _cx: &tracing_subscriber::subscribe::Context<'_, S>) -> bool {
         struct ShouldEnable(bool);
         impl Visit for ShouldEnable {
             fn record_bool(&mut self, field: &tracing_core::Field, value: bool) {
@@ -26,12 +18,7 @@ impl<S> Filter<S> for FilterEvent {
                 }
             }
 
-            fn record_debug(
-                &mut self,
-                _field: &tracing_core::Field,
-                _value: &dyn core::fmt::Debug,
-            ) {
-            }
+            fn record_debug(&mut self, _field: &tracing_core::Field, _value: &dyn core::fmt::Debug) {}
         }
         let mut should_enable = ShouldEnable(false);
         event.record(&mut should_enable);

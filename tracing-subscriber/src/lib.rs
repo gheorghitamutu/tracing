@@ -1,47 +1,46 @@
 //! Utilities for implementing and composing [`tracing`] subscribers.
 //!
 //! [`tracing`] is a framework for instrumenting Rust programs to collect
-//! scoped, structured, and async-aware diagnostics. The [`Collect`] trait
+//! scoped, structured, and async-aware diagnostics. The [`Subscriber`] trait
 //! represents the functionality necessary to collect this trace data. This
 //! crate contains tools for composing subscribers out of smaller units of
 //! behaviour, and batteries-included implementations of common subscriber
 //! functionality.
 //!
-//! `tracing-subscriber` is intended for use by both `Collector` authors and
+//! `tracing-subscriber` is intended for use by both `Subscriber` authors and
 //! application authors using `tracing` to instrument their applications.
 //!
 //! *Compiler support: [requires `rustc` 1.63+][msrv]*
 //!
 //! [msrv]: #supported-rust-versions
 //!
-//! ## Subscribers and Filters
+//! ## `Layer`s and `Filter`s
 //!
 //! The most important component of the `tracing-subscriber` API is the
-//! [`Subscribe`] trait, which provides a composable abstraction for building
-//! [collector]s. Like the [`Collect`] trait, [`Subscribe`] defines a
-//! particular behavior for collecting trace data. Unlike [`Collect`],
-//! which implements a *complete* strategy for how trace data is collected,
-//! [`Subscribe`] provide *modular* implementations of specific behaviors.
-//! Therefore, they can be [composed together] to form a [collector] which is
-//! capable of recording traces in a variety of ways. See the [`subscribe` module's
-//! documentation][subscribe] for details on using [subscribers].
+//! [`Layer`] trait, which provides a composable abstraction for building
+//! [`Subscriber`]s. Like the [`Subscriber`] trait, a [`Layer`] defines a
+//! particular behavior for collecting trace data. Unlike [`Subscriber`]s,
+//! which implement a *complete* strategy for how trace data is collected,
+//! [`Layer`]s provide *modular* implementations of specific behaviors.
+//! Therefore, they can be [composed together] to form a [`Subscriber`] which is
+//! capable of recording traces in a variety of ways. See the [`layer` module's
+//! documentation][layer] for details on using [`Layer`]s.
 //!
 //! In addition, the [`Filter`] trait defines an interface for filtering what
-//! spans and events are recorded by a particular subscriber. This allows different
-//! [`Subscribe`] implementationss to handle separate subsets of the trace data
-//! emitted by a program. See the [documentation on per-subscriber
-//! filtering][psf] for more information on using [`Filter`]s.
+//! spans and events are recorded by a particular layer. This allows different
+//! [`Layer`]s to handle separate subsets of the trace data emitted by a
+//! program. See the [documentation on per-layer filtering][plf] for more
+//! information on using [`Filter`]s.
 //!
-//! [`Subscribe`]: crate::subscribe::Subscribe
-//! [composed together]: crate::subscribe#composing-subscribers
-//! [subscribe]: crate::subscribe
-//! [subscribers]: crate::subscribe
-//! [`Filter`]: crate::subscribe::Filter
-//! [psf]: crate::subscribe#per-subscriber-filtering
+//! [`Layer`]: crate::layer::Layer
+//! [composed together]: crate::layer#composing-layers
+//! [layer]: crate::layer
+//! [`Filter`]: crate::layer::Filter
+//! [plf]: crate::layer#per-layer-filtering
 //!
-//! ## Included Collectors
+//! ## Included Subscribers
 //!
-//! The following [collector]s are provided for application authors:
+//! The following `Subscriber`s are provided for application authors:
 //!
 //! - [`fmt`] - Formats and logs tracing data (requires the `fmt` feature flag)
 //!
@@ -64,6 +63,8 @@
 //! - `local-time`: Enables local time formatting when using the [`time`
 //!   crate]'s timestamp formatters with the `fmt` subscriber.
 //!
+//! [`registry`]: mod@registry
+//!
 //! ### Optional Dependencies
 //!
 //! - [`tracing-log`]: Enables better formatting for events emitted by `log`
@@ -81,7 +82,7 @@
 //! used without requiring the Rust standard library, although some features are
 //! disabled. Although most of the APIs provided by `tracing-subscriber`, such
 //! as [`fmt`] and [`EnvFilter`], require the standard library, some
-//! functionality, such as the [`Subscribe`] trait, can still be used in
+//! functionality, such as the [`Layer`] trait, can still be used in
 //! `no_std` environments.
 //!
 //! The dependency on the standard library is controlled by two crate feature
@@ -103,6 +104,37 @@
 //! tracing-subscriber = { version = "0.3", default-features = false, features = ["alloc"] }
 //! ```
 //!
+//! ### Unstable Features
+//!
+//! These feature flags enable **unstable** features. The public API may break in 0.1.x
+//! releases. To enable these features, the `--cfg tracing_unstable` must be passed to
+//! `rustc` when compiling.
+//!
+//! The following unstable feature flags are currently available:
+//!
+//! * `valuable`: Enables support for serializing values recorded using the
+//!   [`valuable`] crate as structured JSON in the [`format::Json`] formatter.
+//!
+//! #### Enabling Unstable Features
+//!
+//! The easiest way to set the `tracing_unstable` cfg is to use the `RUSTFLAGS`
+//! env variable when running `cargo` commands:
+//!
+//! ```shell
+//! RUSTFLAGS="--cfg tracing_unstable" cargo build
+//! ```
+//! Alternatively, the following can be added to the `.cargo/config` file in a
+//! project to automatically enable the cfg flag for that project:
+//!
+//! ```toml
+//! [build]
+//! rustflags = ["--cfg", "tracing_unstable"]
+//! ```
+//!
+//! [feature flags]: https://doc.rust-lang.org/cargo/reference/manifest.html#the-features-section
+//! [`valuable`]: https://crates.io/crates/valuable
+//! [`format::Json`]: crate::fmt::format::Json
+//!
 //! ## Supported Rust Versions
 //!
 //! Tracing is built against the latest stable release. The minimum supported
@@ -117,11 +149,10 @@
 //! supported compiler version is not considered a semver breaking change as
 //! long as doing so complies with this policy.
 //!
-//! [`fmt`]: mod@fmt
-//! [`registry`]: mod@registry
-//! [`Collect`]: tracing_core::collect::Collect
-//! [collector]: tracing_core::collect::Collect
+//! [`Subscriber`]: tracing_core::subscriber::Subscriber
+//! [`tracing`]: https://docs.rs/tracing/latest/tracing
 //! [`EnvFilter`]: filter::EnvFilter
+//! [`fmt`]: mod@fmt
 //! [`tracing-log`]: https://crates.io/crates/tracing-log
 //! [`smallvec`]: https://crates.io/crates/smallvec
 //! [`env_logger` crate]: https://crates.io/crates/env_logger
@@ -131,7 +162,6 @@
 //! [`libstd`]: https://doc.rust-lang.org/std/index.html
 #![doc(
     html_logo_url = "https://raw.githubusercontent.com/tokio-rs/tracing/master/assets/logo-type.png",
-    html_favicon_url = "https://raw.githubusercontent.com/tokio-rs/tracing/master/assets/favicon.ico",
     issue_tracker_base_url = "https://github.com/tokio-rs/tracing/issues/"
 )]
 #![cfg_attr(
@@ -156,8 +186,7 @@
     overflowing_literals,
     path_statements,
     patterns_in_fns_without_body,
-    private_interfaces,
-    private_bounds,
+    private_in_public,
     unconditional_recursion,
     unused,
     unused_allocation,
@@ -183,7 +212,7 @@ pub mod filter;
 pub mod prelude;
 pub mod registry;
 
-pub mod subscribe;
+pub mod layer;
 pub mod util;
 
 feature! {
@@ -204,7 +233,7 @@ feature! {
     pub use filter::EnvFilter;
 }
 
-pub use subscribe::Subscribe;
+pub use layer::Layer;
 
 feature! {
     #![all(feature = "registry", feature = "std")]

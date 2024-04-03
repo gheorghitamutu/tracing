@@ -1,10 +1,10 @@
-//! A Collector for formatting and logging `tracing` data.
+//! A `Subscriber` for formatting and logging `tracing` data.
 //!
 //! # Overview
 //!
 //! [`tracing`] is a framework for instrumenting Rust programs with context-aware,
 //! structured, event-based diagnostic information. This crate provides an
-//! implementation of the [`Collect`] trait that records `tracing`'s `Event`s
+//! implementation of the [`Subscriber`] trait that records `tracing`'s `Event`s
 //! and `Span`s by formatting them as text and logging them to stdout.
 //!
 //! # Usage
@@ -18,9 +18,9 @@
 //!
 //! *Compiler support: [requires `rustc` 1.63+][msrv]*
 //!
-//! [msrv]: ../index.html#supported-rust-versions
+//! [msrv]: super#supported-rust-versions
 //!
-//! Add the following to your executable to initialize the default collector:
+//! Add the following to your executable to initialize the default subscriber:
 //! ```rust
 //! use tracing_subscriber;
 //!
@@ -29,7 +29,7 @@
 //!
 //! ## Filtering Events with Environment Variables
 //!
-//! The default collector installed by `init` enables you to filter events
+//! The default subscriber installed by `init` enables you to filter events
 //! at runtime using environment variables (using the [`EnvFilter`]).
 //!
 //! The filter syntax is a superset of the [`env_logger`] syntax.
@@ -45,26 +45,26 @@
 //!
 //! # Configuration
 //!
-//! You can configure a collector instead of using the defaults with
+//! You can configure a subscriber instead of using the defaults with
 //! the following functions:
 //!
-//! ## Collector
+//! ### Subscriber
 //!
-//! The [`FmtCollector`] formats and records `tracing` events as line-oriented logs.
+//! The [`FmtSubscriber`] formats and records `tracing` events as line-oriented logs.
 //! You can create one by calling:
 //!
 //! ```rust
-//! let collector = tracing_subscriber::fmt()
+//! let subscriber = tracing_subscriber::fmt()
 //!     // ... add configuration
 //!     .finish();
 //! ```
 //!
-//! The configuration methods for [`FmtCollector`] can be found in
-//! [`fmtBuilder`].
+//! You can find the configuration methods for [`FmtSubscriber`] in
+//! [`SubscriberBuilder`].
 //!
 //! ## Formatters
 //!
-//! The output format used by the subscriber and collector in this module is
+//! The output format used by the layer and subscriber in this module is
 //! represented by implementing the [`FormatEvent`] trait, and can be
 //! customized. This module provides a number of formatter implementations:
 //!
@@ -75,8 +75,7 @@
 //!
 //! * [`format::Compact`]: A variant of the default formatter, optimized for
 //!   short line lengths. Fields from the current span context are appended to
-//!   the fields of the formatted event, and span names are not shown; the
-//!   verbosity level is abbreviated to a single character. See
+//!   the fields of the formatted event. See
 //!   [here](format::Compact#example-output) for sample output.
 //!
 //! * [`format::Pretty`]: Emits excessively pretty, multi-line logs, optimized
@@ -117,7 +116,7 @@
 //!    .with_thread_names(true) // include the name of the current thread
 //!    .compact(); // use the `Compact` formatting style.
 //!
-//! // Create a `fmt` collector that uses our custom event format, and set it
+//! // Create a `fmt` subscriber that uses our custom event format, and set it
 //! // as the default.
 //! tracing_subscriber::fmt()
 //!     .event_format(format)
@@ -144,70 +143,71 @@
 //!
 //! You can find the other available [`filter`]s in the documentation.
 //!
-//! ### Using Your Collector
+//! ### Using Your Subscriber
 //!
-//! Finally, once you have configured your `Collect`, you need to
+//! Finally, once you have configured your `Subscriber`, you need to
 //! configure your executable to use it.
 //!
-//! A collector can be installed globally using:
+//! A subscriber can be installed globally using:
 //! ```rust
 //! use tracing;
-//! use tracing_subscriber::fmt;
+//! use tracing_subscriber::FmtSubscriber;
 //!
-//! let collector = fmt::Collector::new();
+//! let subscriber = FmtSubscriber::new();
 //!
-//! tracing::collect::set_global_default(collector)
-//!     .map_err(|_err| eprintln!("Unable to set global default collector"));
+//! tracing::subscriber::set_global_default(subscriber)
+//!     .map_err(|_err| eprintln!("Unable to set global default subscriber"));
 //! // Note this will only fail if you try to set the global default
-//! // collector multiple times
+//! // subscriber multiple times
 //! ```
 //!
-//! ## Composing Subscribers
+//! ### Composing Layers
 //!
-//! Composing an [`EnvFilter`] `Subscribe` and a [format `Subscribe`](super::fmt::Subscriber):
+//! Composing an [`EnvFilter`] `Layer` and a [format `Layer`][super::fmt::Layer]:
 //!
 //! ```rust
 //! use tracing_subscriber::{fmt, EnvFilter};
-//! use tracing_subscriber::subscribe::CollectExt;
-//! use tracing_subscriber::util::SubscriberInitExt;
+//! use tracing_subscriber::prelude::*;
 //!
-//! let fmt_subscriber = fmt::subscriber()
+//! let fmt_layer = fmt::layer()
 //!     .with_target(false);
-//! let filter_subscriber = EnvFilter::try_from_default_env()
+//! let filter_layer = EnvFilter::try_from_default_env()
 //!     .or_else(|_| EnvFilter::try_new("info"))
 //!     .unwrap();
 //!
 //! tracing_subscriber::registry()
-//!     .with(filter_subscriber)
-//!     .with(fmt_subscriber)
+//!     .with(filter_layer)
+//!     .with(fmt_layer)
 //!     .init();
 //! ```
 //!
 //! [`EnvFilter`]: super::filter::EnvFilter
 //! [`env_logger`]: https://docs.rs/env_logger/
 //! [`filter`]: super::filter
-//! [`fmtBuilder`]: CollectorBuilder
-//! [`FmtCollector`]: Collector
-//! [`Collect`]: https://docs.rs/tracing/latest/tracing/trait.Collect.html
+//! [`FmtSubscriber`]: Subscriber
+//! [`Subscriber`]:
+//!     https://docs.rs/tracing/latest/tracing/trait.Subscriber.html
 //! [`tracing`]: https://crates.io/crates/tracing
 //! [`fmt::format`]: mod@crate::fmt::format
-use std::{any::TypeId, error::Error, io, ptr::NonNull};
-use tracing_core::{collect::Interest, span, Event, Metadata};
+use std::{any::TypeId, error::Error, io};
+use tracing_core::{span, subscriber::Interest, Event, Metadata};
 
-mod fmt_subscriber;
+mod fmt_layer;
 #[cfg_attr(docsrs, doc(cfg(all(feature = "fmt", feature = "std"))))]
 pub mod format;
 #[cfg_attr(docsrs, doc(cfg(all(feature = "fmt", feature = "std"))))]
 pub mod time;
 #[cfg_attr(docsrs, doc(cfg(all(feature = "fmt", feature = "std"))))]
 pub mod writer;
-pub use fmt_subscriber::{FmtContext, FormattedFields, Subscriber};
 
-use crate::subscribe::Subscribe as _;
+pub use fmt_layer::{FmtContext, FormattedFields, Layer};
+
+use crate::layer::Layer as _;
+use crate::util::SubscriberInitExt;
 use crate::{
     filter::LevelFilter,
+    layer,
     registry::{LookupSpan, Registry},
-    reload, subscribe,
 };
 
 #[doc(inline)]
@@ -217,47 +217,50 @@ pub use self::{
     writer::{MakeWriter, TestWriter},
 };
 
-/// A `Collector` that logs formatted representations of `tracing` events.
+/// A `Subscriber` that logs formatted representations of `tracing` events.
 ///
-/// This consists of an inner `Formatter` wrapped in a subscriber that performs filtering.
-#[derive(Debug)]
+/// This consists of an inner `Formatter` wrapped in a layer that performs filtering.
 #[cfg_attr(docsrs, doc(cfg(all(feature = "fmt", feature = "std"))))]
-pub struct Collector<
+#[derive(Debug)]
+pub struct Subscriber<
     N = format::DefaultFields,
-    E = format::Format,
+    E = format::Format<format::Full>,
     F = LevelFilter,
     W = fn() -> io::Stdout,
 > {
-    inner: subscribe::Layered<F, Formatter<N, E, W>>,
+    inner: layer::Layered<F, Formatter<N, E, W>>,
 }
 
-/// A collector that logs formatted representations of `tracing` events.
+/// A `Subscriber` that logs formatted representations of `tracing` events.
 /// This type only logs formatted events; it does not perform any filtering.
 #[cfg_attr(docsrs, doc(cfg(all(feature = "fmt", feature = "std"))))]
-pub type Formatter<N = format::DefaultFields, E = format::Format, W = fn() -> io::Stdout> =
-    subscribe::Layered<fmt_subscriber::Subscriber<Registry, N, E, W>, Registry>;
-
-/// Configures and constructs `Collector`s.
-#[derive(Debug)]
-#[cfg_attr(docsrs, doc(cfg(all(feature = "fmt", feature = "std"))))]
-#[must_use]
-pub struct CollectorBuilder<
+pub type Formatter<
     N = format::DefaultFields,
-    E = format::Format,
+    E = format::Format<format::Full>,
+    W = fn() -> io::Stdout,
+> = layer::Layered<fmt_layer::Layer<Registry, N, E, W>, Registry>;
+
+/// Configures and constructs `Subscriber`s.
+#[cfg_attr(docsrs, doc(cfg(all(feature = "fmt", feature = "std"))))]
+#[derive(Debug)]
+#[must_use]
+pub struct SubscriberBuilder<
+    N = format::DefaultFields,
+    E = format::Format<format::Full>,
     F = LevelFilter,
     W = fn() -> io::Stdout,
 > {
     filter: F,
-    inner: Subscriber<Registry, N, E, W>,
+    inner: Layer<Registry, N, E, W>,
 }
 
-/// Returns a new [`CollectorBuilder`] for configuring a [formatting collector].
+/// Returns a new [`SubscriberBuilder`] for configuring a [formatting subscriber].
 ///
-/// This is essentially shorthand for [`CollectorBuilder::default()`].
+/// This is essentially shorthand for [`SubscriberBuilder::default()]`.
 ///
 /// # Examples
 ///
-/// Using [`init`] to set the default collector:
+/// Using [`init`] to set the default subscriber:
 ///
 /// ```rust
 /// tracing_subscriber::fmt().init();
@@ -272,78 +275,79 @@ pub struct CollectorBuilder<
 ///     .with_target(false)
 ///     .with_timer(tracing_subscriber::fmt::time::uptime())
 ///     .with_level(true)
-///     // Set the collector as the default.
+///     // Set the subscriber as the default.
 ///     .init();
 /// ```
 ///
-/// [`try_init`] returns an error if the default collector could not be set:
+/// [`try_init`] returns an error if the default subscriber could not be set:
 ///
 /// ```rust
 /// use std::error::Error;
 ///
 /// fn init_subscriber() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
 ///     tracing_subscriber::fmt()
-///         // Configure the collector to emit logs in JSON format.
+///         // Configure the subscriber to emit logs in JSON format.
 ///         .json()
-///         // Configure the collector to flatten event fields in the output JSON objects.
+///         // Configure the subscriber to flatten event fields in the output JSON objects.
 ///         .flatten_event(true)
-///         // Set the collector as the default, returning an error if this fails.
+///         // Set the subscriber as the default, returning an error if this fails.
 ///         .try_init()?;
 ///
 ///     Ok(())
 /// }
 /// ```
 ///
-/// Rather than setting the collector as the default, [`finish`] _returns_ the
-/// constructed collector, which may then be passed to other functions:
+/// Rather than setting the subscriber as the default, [`finish`] _returns_ the
+/// constructed subscriber, which may then be passed to other functions:
 ///
 /// ```rust
-/// let collector = tracing_subscriber::fmt()
+/// let subscriber = tracing_subscriber::fmt()
 ///     .with_max_level(tracing::Level::DEBUG)
 ///     .compact()
 ///     .finish();
 ///
-/// tracing::collect::with_default(collector, || {
-///     // the collector will only be set as the default
+/// tracing::subscriber::with_default(subscriber, || {
+///     // the subscriber will only be set as the default
 ///     // inside this closure...
 /// })
 /// ```
 ///
-/// [formatting collector]: Collector
-/// [`CollectorBuilder::default()`]: struct.CollectorBuilder.html#method.default
-/// [`init`]: CollectorBuilder::init()
-/// [`try_init`]: CollectorBuilder::try_init()
-/// [`finish`]: CollectorBuilder::finish()
-#[cfg_attr(docsrs, doc(cfg(all(feature = "fmt", feature = "std"))))]
-pub fn fmt() -> CollectorBuilder {
-    CollectorBuilder::default()
-}
-
-/// Returns a new [formatting subscriber] that can be [composed] with other subscribers to
-/// construct a collector.
-///
-/// This is a shorthand for the equivalent [`Subscriber::default()`] function.
-///
 /// [formatting subscriber]: Subscriber
-/// [composed]: super::subscribe
-/// [`Subscriber::default()`]: struct.Subscriber.html#method.default
+/// [`SubscriberBuilder::default()`]: SubscriberBuilder::default
+/// [`init`]: SubscriberBuilder::init()
+/// [`try_init`]: SubscriberBuilder::try_init()
+/// [`finish`]: SubscriberBuilder::finish()
 #[cfg_attr(docsrs, doc(cfg(all(feature = "fmt", feature = "std"))))]
-pub fn subscriber<C>() -> Subscriber<C> {
-    Subscriber::default()
+pub fn fmt() -> SubscriberBuilder {
+    SubscriberBuilder::default()
 }
 
-impl Collector {
-    /// The maximum [verbosity level] that is enabled by a `Collector` by
+/// Returns a new [formatting layer] that can be [composed] with other layers to
+/// construct a [`Subscriber`].
+///
+/// This is a shorthand for the equivalent [`Layer::default()`] function.
+///
+/// [formatting layer]: Layer
+/// [composed]: crate::layer
+/// [`Layer::default()`]: Layer::default
+#[cfg_attr(docsrs, doc(cfg(all(feature = "fmt", feature = "std"))))]
+pub fn layer<S>() -> Layer<S> {
+    Layer::default()
+}
+
+impl Subscriber {
+    /// The maximum [verbosity level] that is enabled by a `Subscriber` by
     /// default.
     ///
-    /// This can be overridden with the [`CollectorBuilder::with_max_level`] method.
+    /// This can be overridden with the [`SubscriberBuilder::with_max_level`] method.
     ///
     /// [verbosity level]: tracing_core::Level
+    /// [`SubscriberBuilder::with_max_level`]: SubscriberBuilder::with_max_level
     pub const DEFAULT_MAX_LEVEL: LevelFilter = LevelFilter::INFO;
 
-    /// Returns a new `CollectorBuilder` for configuring a format subscriber.
-    pub fn builder() -> CollectorBuilder {
-        CollectorBuilder::default()
+    /// Returns a new `SubscriberBuilder` for configuring a format subscriber.
+    pub fn builder() -> SubscriberBuilder {
+        SubscriberBuilder::default()
     }
 
     /// Returns a new format subscriber with the default configuration.
@@ -352,22 +356,22 @@ impl Collector {
     }
 }
 
-impl Default for Collector {
+impl Default for Subscriber {
     fn default() -> Self {
-        CollectorBuilder::default().finish()
+        SubscriberBuilder::default().finish()
     }
 }
 
-// === impl Collector ===
+// === impl Subscriber ===
 
-impl<N, E, F, W> tracing_core::Collect for Collector<N, E, F, W>
+impl<N, E, F, W> tracing_core::Subscriber for Subscriber<N, E, F, W>
 where
     N: for<'writer> FormatFields<'writer> + 'static,
     E: FormatEvent<Registry, N> + 'static,
-    F: subscribe::Subscribe<Formatter<N, E, W>> + 'static,
+    F: layer::Layer<Formatter<N, E, W>> + 'static,
     W: for<'writer> MakeWriter<'writer> + 'static,
-    subscribe::Layered<F, Formatter<N, E, W>>: tracing_core::Collect,
-    fmt_subscriber::Subscriber<Registry, N, E, W>: subscribe::Subscribe<Registry>,
+    layer::Layered<F, Formatter<N, E, W>>: tracing_core::Subscriber,
+    fmt_layer::Layer<Registry, N, E, W>: layer::Layer<Registry>,
 {
     #[inline]
     fn register_callsite(&self, meta: &'static Metadata<'static>) -> Interest {
@@ -435,57 +439,55 @@ where
         self.inner.max_level_hint()
     }
 
-    unsafe fn downcast_raw(&self, id: TypeId) -> Option<NonNull<()>> {
+    unsafe fn downcast_raw(&self, id: TypeId) -> Option<*const ()> {
         if id == TypeId::of::<Self>() {
-            Some(NonNull::from(self).cast())
+            Some(self as *const Self as *const ())
         } else {
             self.inner.downcast_raw(id)
         }
     }
 }
 
-impl<'a, N, E, F, W> LookupSpan<'a> for Collector<N, E, F, W>
+impl<'a, N, E, F, W> LookupSpan<'a> for Subscriber<N, E, F, W>
 where
-    subscribe::Layered<F, Formatter<N, E, W>>: LookupSpan<'a>,
+    layer::Layered<F, Formatter<N, E, W>>: LookupSpan<'a>,
 {
-    type Data = <subscribe::Layered<F, Formatter<N, E, W>> as LookupSpan<'a>>::Data;
+    type Data = <layer::Layered<F, Formatter<N, E, W>> as LookupSpan<'a>>::Data;
 
     fn span_data(&'a self, id: &span::Id) -> Option<Self::Data> {
         self.inner.span_data(id)
     }
 }
 
-// ===== impl CollectorBuilder =====
+// ===== impl SubscriberBuilder =====
 
-impl Default for CollectorBuilder {
+impl Default for SubscriberBuilder {
     fn default() -> Self {
-        CollectorBuilder {
-            filter: Collector::DEFAULT_MAX_LEVEL,
+        SubscriberBuilder {
+            filter: Subscriber::DEFAULT_MAX_LEVEL,
             inner: Default::default(),
         }
         .log_internal_errors(true)
     }
 }
 
-impl<N, E, F, W> CollectorBuilder<N, E, F, W>
+impl<N, E, F, W> SubscriberBuilder<N, E, F, W>
 where
     N: for<'writer> FormatFields<'writer> + 'static,
     E: FormatEvent<Registry, N> + 'static,
     W: for<'writer> MakeWriter<'writer> + 'static,
-    F: subscribe::Subscribe<Formatter<N, E, W>> + Send + Sync + 'static,
-    fmt_subscriber::Subscriber<Registry, N, E, W>:
-        subscribe::Subscribe<Registry> + Send + Sync + 'static,
+    F: layer::Layer<Formatter<N, E, W>> + Send + Sync + 'static,
+    fmt_layer::Layer<Registry, N, E, W>: layer::Layer<Registry> + Send + Sync + 'static,
 {
-    /// Finish the builder, returning a new `FmtCollector`.
-    #[must_use = "you may want to use `try_init` or similar to actually install the collector."]
-    pub fn finish(self) -> Collector<N, E, F, W> {
-        let collector = self.inner.with_collector(Registry::default());
-        Collector {
-            inner: self.filter.with_collector(collector),
+    /// Finish the builder, returning a new `FmtSubscriber`.
+    pub fn finish(self) -> Subscriber<N, E, F, W> {
+        let subscriber = self.inner.with_subscriber(Registry::default());
+        Subscriber {
+            inner: self.filter.with_subscriber(subscriber),
         }
     }
 
-    /// Install this collector as the global default if one is
+    /// Install this Subscriber as the global default if one is
     /// not already set.
     ///
     /// If the `tracing-log` feature is enabled, this will also install
@@ -493,7 +495,7 @@ where
     ///
     /// # Errors
     /// Returns an Error if the initialization was unsuccessful, likely
-    /// because a global collector was already installed by another
+    /// because a global subscriber was already installed by another
     /// call to `try_init`.
     pub fn try_init(self) -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
         use crate::util::SubscriberInitExt;
@@ -502,34 +504,34 @@ where
         Ok(())
     }
 
-    /// Install this collector as the global default.
+    /// Install this Subscriber as the global default.
     ///
     /// If the `tracing-log` feature is enabled, this will also install
     /// the LogTracer to convert `Log` records into `tracing` `Event`s.
     ///
     /// # Panics
     /// Panics if the initialization was unsuccessful, likely because a
-    /// global collector was already installed by another call to `try_init`.
+    /// global subscriber was already installed by another call to `try_init`.
     pub fn init(self) {
-        self.try_init().expect("Unable to install global collector")
+        self.try_init()
+            .expect("Unable to install global subscriber")
     }
 }
 
-impl<N, E, F, W> From<CollectorBuilder<N, E, F, W>> for tracing_core::Dispatch
+impl<N, E, F, W> From<SubscriberBuilder<N, E, F, W>> for tracing_core::Dispatch
 where
     N: for<'writer> FormatFields<'writer> + 'static,
     E: FormatEvent<Registry, N> + 'static,
     W: for<'writer> MakeWriter<'writer> + 'static,
-    F: subscribe::Subscribe<Formatter<N, E, W>> + Send + Sync + 'static,
-    fmt_subscriber::Subscriber<Registry, N, E, W>:
-        subscribe::Subscribe<Registry> + Send + Sync + 'static,
+    F: layer::Layer<Formatter<N, E, W>> + Send + Sync + 'static,
+    fmt_layer::Layer<Registry, N, E, W>: layer::Layer<Registry> + Send + Sync + 'static,
 {
-    fn from(builder: CollectorBuilder<N, E, F, W>) -> tracing_core::Dispatch {
+    fn from(builder: SubscriberBuilder<N, E, F, W>) -> tracing_core::Dispatch {
         tracing_core::Dispatch::new(builder.finish())
     }
 }
 
-impl<N, L, T, F, W> CollectorBuilder<N, format::Format<L, T>, F, W>
+impl<N, L, T, F, W> SubscriberBuilder<N, format::Format<L, T>, F, W>
 where
     N: for<'writer> FormatFields<'writer> + 'static,
 {
@@ -547,16 +549,16 @@ where
     /// [`UtcTime`]: time::UtcTime
     /// [`LocalTime`]: time::LocalTime
     /// [`time` crate]: https://docs.rs/time/0.3
-    pub fn with_timer<T2>(self, timer: T2) -> CollectorBuilder<N, format::Format<L, T2>, F, W> {
-        CollectorBuilder {
+    pub fn with_timer<T2>(self, timer: T2) -> SubscriberBuilder<N, format::Format<L, T2>, F, W> {
+        SubscriberBuilder {
             filter: self.filter,
             inner: self.inner.with_timer(timer),
         }
     }
 
     /// Do not emit timestamps with log messages.
-    pub fn without_time(self) -> CollectorBuilder<N, format::Format<L, ()>, F, W> {
-        CollectorBuilder {
+    pub fn without_time(self) -> SubscriberBuilder<N, format::Format<L, ()>, F, W> {
+        SubscriberBuilder {
             filter: self.filter,
             inner: self.inner.without_time(),
         }
@@ -598,13 +600,13 @@ where
     /// ```
     ///
     /// Note that the generated events will only be part of the log output by
-    /// this formatter; they will not be recorded by other `Collector`s or by
-    /// `Subscriber`s added to this subscriber.
+    /// this formatter; they will not be recorded by other `Subscriber`s or by
+    /// `Layer`s added to this subscriber.
     ///
-    /// [lifecycle]: mod@tracing::span#the-span-lifecycle
-    /// [time]: CollectorBuilder::without_time()
+    /// [lifecycle]: https://docs.rs/tracing/latest/tracing/span/index.html#the-span-lifecycle
+    /// [time]: SubscriberBuilder::without_time()
     pub fn with_span_events(self, kind: format::FmtSpan) -> Self {
-        CollectorBuilder {
+        SubscriberBuilder {
             inner: self.inner.with_span_events(kind),
             ..self
         }
@@ -625,8 +627,10 @@ where
     /// ANSI escape codes can ensure that they are not used, regardless of
     /// whether or not other crates in the dependency graph enable the "ansi"
     /// feature flag.
-    pub fn with_ansi(self, ansi: bool) -> CollectorBuilder<N, format::Format<L, T>, F, W> {
-        CollectorBuilder {
+    #[cfg(feature = "ansi")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "ansi")))]
+    pub fn with_ansi(self, ansi: bool) -> SubscriberBuilder<N, format::Format<L, T>, F, W> {
+        SubscriberBuilder {
             inner: self.inner.with_ansi(ansi),
             ..self
         }
@@ -635,7 +639,7 @@ where
     /// Sets whether to write errors from [`FormatEvent`] to the writer.
     /// Defaults to true.
     ///
-    /// By default, `fmt::Collector` will write any `FormatEvent`-internal errors to
+    /// By default, `fmt::Layer` will write any `FormatEvent`-internal errors to
     /// the writer. These errors are unlikely and will only occur if there is a
     /// bug in the `FormatEvent` implementation or its dependencies.
     ///
@@ -646,8 +650,8 @@ where
     pub fn log_internal_errors(
         self,
         log_internal_errors: bool,
-    ) -> CollectorBuilder<N, format::Format<L, T>, F, W> {
-        CollectorBuilder {
+    ) -> SubscriberBuilder<N, format::Format<L, T>, F, W> {
+        SubscriberBuilder {
             inner: self.inner.log_internal_errors(log_internal_errors),
             ..self
         }
@@ -657,8 +661,8 @@ where
     pub fn with_target(
         self,
         display_target: bool,
-    ) -> CollectorBuilder<N, format::Format<L, T>, F, W> {
-        CollectorBuilder {
+    ) -> SubscriberBuilder<N, format::Format<L, T>, F, W> {
+        SubscriberBuilder {
             inner: self.inner.with_target(display_target),
             ..self
         }
@@ -671,8 +675,8 @@ where
     pub fn with_file(
         self,
         display_filename: bool,
-    ) -> CollectorBuilder<N, format::Format<L, T>, F, W> {
-        CollectorBuilder {
+    ) -> SubscriberBuilder<N, format::Format<L, T>, F, W> {
+        SubscriberBuilder {
             inner: self.inner.with_file(display_filename),
             ..self
         }
@@ -685,8 +689,8 @@ where
     pub fn with_line_number(
         self,
         display_line_number: bool,
-    ) -> CollectorBuilder<N, format::Format<L, T>, F, W> {
-        CollectorBuilder {
+    ) -> SubscriberBuilder<N, format::Format<L, T>, F, W> {
+        SubscriberBuilder {
             inner: self.inner.with_line_number(display_line_number),
             ..self
         }
@@ -696,8 +700,8 @@ where
     pub fn with_level(
         self,
         display_level: bool,
-    ) -> CollectorBuilder<N, format::Format<L, T>, F, W> {
-        CollectorBuilder {
+    ) -> SubscriberBuilder<N, format::Format<L, T>, F, W> {
+        SubscriberBuilder {
             inner: self.inner.with_level(display_level),
             ..self
         }
@@ -710,8 +714,8 @@ where
     pub fn with_thread_names(
         self,
         display_thread_names: bool,
-    ) -> CollectorBuilder<N, format::Format<L, T>, F, W> {
-        CollectorBuilder {
+    ) -> SubscriberBuilder<N, format::Format<L, T>, F, W> {
+        SubscriberBuilder {
             inner: self.inner.with_thread_names(display_thread_names),
             ..self
         }
@@ -724,48 +728,57 @@ where
     pub fn with_thread_ids(
         self,
         display_thread_ids: bool,
-    ) -> CollectorBuilder<N, format::Format<L, T>, F, W> {
-        CollectorBuilder {
+    ) -> SubscriberBuilder<N, format::Format<L, T>, F, W> {
+        SubscriberBuilder {
             inner: self.inner.with_thread_ids(display_thread_ids),
             ..self
         }
     }
 
-    /// Sets the collector being built to use a less verbose formatter.
+    pub fn with_extra_fields(self, display_extra_fields: bool) -> SubscriberBuilder<N, format::Format<L, T>, F, W> {
+        SubscriberBuilder {
+            inner: self.inner.with_extra_fields(display_extra_fields),
+            ..self
+        }
+    }
+
+    /// Sets the subscriber being built to use a less verbose formatter.
     ///
-    /// See [`format::Compact`] for details.
-    pub fn compact(self) -> CollectorBuilder<N, format::Format<format::Compact, T>, F, W>
+    /// See [`format::Compact`].
+    pub fn compact(self) -> SubscriberBuilder<N, format::Format<format::Compact, T>, F, W>
     where
         N: for<'writer> FormatFields<'writer> + 'static,
     {
-        CollectorBuilder {
+        SubscriberBuilder {
             filter: self.filter,
             inner: self.inner.compact(),
         }
     }
 
-    /// Sets the collector being built to use an [excessively pretty, human-readable formatter](crate::fmt::format::Pretty).
+    /// Sets the subscriber being built to use an [excessively pretty, human-readable formatter](crate::fmt::format::Pretty).
     #[cfg(feature = "ansi")]
     #[cfg_attr(docsrs, doc(cfg(feature = "ansi")))]
     pub fn pretty(
         self,
-    ) -> CollectorBuilder<format::Pretty, format::Format<format::Pretty, T>, F, W> {
-        CollectorBuilder {
+    ) -> SubscriberBuilder<format::Pretty, format::Format<format::Pretty, T>, F, W> {
+        SubscriberBuilder {
             filter: self.filter,
             inner: self.inner.pretty(),
         }
     }
 
-    /// Sets the collector being built to use a JSON formatter.
+    /// Sets the subscriber being built to use a JSON formatter.
     ///
     /// See [`format::Json`] for details.
     #[cfg(feature = "json")]
     #[cfg_attr(docsrs, doc(cfg(feature = "json")))]
-    pub fn json(self) -> CollectorBuilder<format::JsonFields, format::Format<format::Json, T>, F, W>
+    pub fn json(
+        self,
+    ) -> SubscriberBuilder<format::JsonFields, format::Format<format::Json, T>, F, W>
     where
         N: for<'writer> FormatFields<'writer> + 'static,
     {
-        CollectorBuilder {
+        SubscriberBuilder {
             filter: self.filter,
             inner: self.inner.json(),
         }
@@ -774,15 +787,15 @@ where
 
 #[cfg(feature = "json")]
 #[cfg_attr(docsrs, doc(cfg(feature = "json")))]
-impl<T, F, W> CollectorBuilder<format::JsonFields, format::Format<format::Json, T>, F, W> {
-    /// Sets the json collector being built to flatten event metadata.
+impl<T, F, W> SubscriberBuilder<format::JsonFields, format::Format<format::Json, T>, F, W> {
+    /// Sets the json subscriber being built to flatten event metadata.
     ///
     /// See [`format::Json`] for details.
     pub fn flatten_event(
         self,
         flatten_event: bool,
-    ) -> CollectorBuilder<format::JsonFields, format::Format<format::Json, T>, F, W> {
-        CollectorBuilder {
+    ) -> SubscriberBuilder<format::JsonFields, format::Format<format::Json, T>, F, W> {
+        SubscriberBuilder {
             filter: self.filter,
             inner: self.inner.flatten_event(flatten_event),
         }
@@ -795,8 +808,8 @@ impl<T, F, W> CollectorBuilder<format::JsonFields, format::Format<format::Json, 
     pub fn with_current_span(
         self,
         display_current_span: bool,
-    ) -> CollectorBuilder<format::JsonFields, format::Format<format::Json, T>, F, W> {
-        CollectorBuilder {
+    ) -> SubscriberBuilder<format::JsonFields, format::Format<format::Json, T>, F, W> {
+        SubscriberBuilder {
             filter: self.filter,
             inner: self.inner.with_current_span(display_current_span),
         }
@@ -809,57 +822,79 @@ impl<T, F, W> CollectorBuilder<format::JsonFields, format::Format<format::Json, 
     pub fn with_span_list(
         self,
         display_span_list: bool,
-    ) -> CollectorBuilder<format::JsonFields, format::Format<format::Json, T>, F, W> {
-        CollectorBuilder {
+    ) -> SubscriberBuilder<format::JsonFields, format::Format<format::Json, T>, F, W> {
+        SubscriberBuilder {
             filter: self.filter,
             inner: self.inner.with_span_list(display_span_list),
         }
     }
 }
 
-impl<N, E, F, W> CollectorBuilder<N, E, reload::Subscriber<F>, W>
+#[cfg(feature = "env-filter")]
+#[cfg_attr(docsrs, doc(cfg(feature = "env-filter")))]
+impl<N, E, W> SubscriberBuilder<N, E, crate::EnvFilter, W>
 where
-    Formatter<N, E, W>: tracing_core::Collect + 'static,
+    Formatter<N, E, W>: tracing_core::Subscriber + 'static,
 {
-    /// Returns a `Handle` that may be used to reload the constructed collector's
+    /// Configures the subscriber being built to allow filter reloading at
+    /// runtime.
+    pub fn with_filter_reloading(
+        self,
+    ) -> SubscriberBuilder<N, E, crate::reload::Layer<crate::EnvFilter, Formatter<N, E, W>>, W>
+    {
+        let (filter, _) = crate::reload::Layer::new(self.filter);
+        SubscriberBuilder {
+            filter,
+            inner: self.inner,
+        }
+    }
+}
+
+#[cfg(feature = "env-filter")]
+#[cfg_attr(docsrs, doc(cfg(feature = "env-filter")))]
+impl<N, E, W> SubscriberBuilder<N, E, crate::reload::Layer<crate::EnvFilter, Formatter<N, E, W>>, W>
+where
+    Formatter<N, E, W>: tracing_core::Subscriber + 'static,
+{
+    /// Returns a `Handle` that may be used to reload the constructed subscriber's
     /// filter.
-    pub fn reload_handle(&self) -> reload::Handle<F> {
+    pub fn reload_handle(&self) -> crate::reload::Handle<crate::EnvFilter, Formatter<N, E, W>> {
         self.filter.handle()
     }
 }
 
-impl<N, E, F, W> CollectorBuilder<N, E, F, W> {
-    /// Sets the Visitor that the collector being built will use to record
+impl<N, E, F, W> SubscriberBuilder<N, E, F, W> {
+    /// Sets the field formatter that the subscriber being built will use to record
     /// fields.
     ///
     /// For example:
     /// ```rust
     /// use tracing_subscriber::fmt::format;
-    /// use tracing_subscriber::field::MakeExt;
+    /// use tracing_subscriber::prelude::*;
     ///
     /// let formatter =
     ///     // Construct a custom formatter for `Debug` fields
     ///     format::debug_fn(|writer, field, value| write!(writer, "{}: {:?}", field, value))
-    ///         // Use the `tracing_subscriber::MakeExt` trait to wrap the
+    ///         // Use the `tracing_subscriber::MakeFmtExt` trait to wrap the
     ///         // formatter so that a delimiter is added between fields.
     ///         .delimited(", ");
     ///
-    /// let collector = tracing_subscriber::fmt()
+    /// let subscriber = tracing_subscriber::fmt()
     ///     .fmt_fields(formatter)
     ///     .finish();
-    /// # drop(collector)
+    /// # drop(subscriber)
     /// ```
-    pub fn fmt_fields<N2>(self, fmt_fields: N2) -> CollectorBuilder<N2, E, F, W>
+    pub fn fmt_fields<N2>(self, fmt_fields: N2) -> SubscriberBuilder<N2, E, F, W>
     where
         N2: for<'writer> FormatFields<'writer> + 'static,
     {
-        CollectorBuilder {
+        SubscriberBuilder {
             filter: self.filter,
             inner: self.inner.fmt_fields(fmt_fields),
         }
     }
 
-    /// Sets the [`EnvFilter`] that the collector will use to determine if
+    /// Sets the [`EnvFilter`] that the subscriber will use to determine if
     /// a span or event is enabled.
     ///
     /// Note that this method requires the "env-filter" feature flag to be enabled.
@@ -906,25 +941,25 @@ impl<N, E, F, W> CollectorBuilder<N, E, F, W> {
     /// # Ok(())}
     /// ```
     /// [`EnvFilter`]: super::filter::EnvFilter
-    /// [`with_max_level`]: CollectorBuilder::with_max_level()
+    /// [`with_max_level`]: SubscriberBuilder::with_max_level()
     #[cfg(feature = "env-filter")]
     #[cfg_attr(docsrs, doc(cfg(feature = "env-filter")))]
     pub fn with_env_filter(
         self,
         filter: impl Into<crate::EnvFilter>,
-    ) -> CollectorBuilder<N, E, crate::EnvFilter, W>
+    ) -> SubscriberBuilder<N, E, crate::EnvFilter, W>
     where
-        Formatter<N, E, W>: tracing_core::Collect + 'static,
+        Formatter<N, E, W>: tracing_core::Subscriber + 'static,
     {
         let filter = filter.into();
-        CollectorBuilder {
+        SubscriberBuilder {
             filter,
             inner: self.inner,
         }
     }
 
     /// Sets the maximum [verbosity level] that will be enabled by the
-    /// collector.
+    /// subscriber.
     ///
     /// If the max level has already been set, or a [`EnvFilter`] was added by
     /// [`with_env_filter`], this replaces that configuration with the new
@@ -941,7 +976,7 @@ impl<N, E, F, W> CollectorBuilder<N, E, F, W> {
     ///     .with_max_level(Level::DEBUG)
     ///     .init();
     /// ```
-    /// This collector won't record any spans or events!
+    /// This subscriber won't record any spans or events!
     /// ```rust
     /// use tracing_subscriber::{fmt, filter::LevelFilter};
     ///
@@ -955,54 +990,9 @@ impl<N, E, F, W> CollectorBuilder<N, E, F, W> {
     pub fn with_max_level(
         self,
         filter: impl Into<LevelFilter>,
-    ) -> CollectorBuilder<N, E, LevelFilter, W> {
+    ) -> SubscriberBuilder<N, E, LevelFilter, W> {
         let filter = filter.into();
-        CollectorBuilder {
-            filter,
-            inner: self.inner,
-        }
-    }
-
-    /// Configures the collector being built to allow filter reloading at
-    /// runtime.
-    ///
-    /// The returned builder will have a [`reload_handle`] method, which returns
-    /// a [`reload::Handle`] that may be used to set a new filter value.
-    ///
-    /// For example:
-    ///
-    /// ```
-    /// use tracing::Level;
-    /// use tracing_subscriber::util::SubscriberInitExt;
-    ///
-    /// let builder = tracing_subscriber::fmt()
-    ///      // Set a max level filter on the collector
-    ///     .with_max_level(Level::INFO)
-    ///     .with_filter_reloading();
-    ///
-    /// // Get a handle for modifying the collector's max level filter.
-    /// let handle = builder.reload_handle();
-    ///
-    /// // Finish building the collector, and set it as the default.
-    /// builder.finish().init();
-    ///
-    /// // Currently, the max level is INFO, so this event will be disabled.
-    /// tracing::debug!("this is not recorded!");
-    ///
-    /// // Use the handle to set a new max level filter.
-    /// // (this returns an error if the collector has been dropped, which shouldn't
-    /// // happen in this example.)
-    /// handle.reload(Level::DEBUG).expect("the collector should still exist");
-    ///
-    /// // Now, the max level is INFO, so this event will be recorded.
-    /// tracing::debug!("this is recorded!");
-    /// ```
-    ///
-    /// [`reload_handle`]: CollectorBuilder::reload_handle
-    /// [`reload::Handle`]: crate::reload::Handle
-    pub fn with_filter_reloading(self) -> CollectorBuilder<N, E, reload::Subscriber<F>, W> {
-        let (filter, _) = reload::Subscriber::new(self.filter);
-        CollectorBuilder {
+        SubscriberBuilder {
             filter,
             inner: self.inner,
         }
@@ -1028,19 +1018,30 @@ impl<N, E, F, W> CollectorBuilder<N, E, F, W> {
     /// ```
     ///
     /// [`Writer`]: struct@self::format::Writer
-    pub fn event_format<E2>(self, fmt_event: E2) -> CollectorBuilder<N, E2, F, W>
+    pub fn event_format<E2>(self, fmt_event: E2) -> SubscriberBuilder<N, E2, F, W>
     where
         E2: FormatEvent<Registry, N> + 'static,
         N: for<'writer> FormatFields<'writer> + 'static,
         W: for<'writer> MakeWriter<'writer> + 'static,
     {
-        CollectorBuilder {
+        SubscriberBuilder {
             filter: self.filter,
             inner: self.inner.event_format(fmt_event),
         }
     }
 
-    /// Sets the [`MakeWriter`] that the collector being built will use to write events.
+    pub fn extra_fields(self, fields: &[(&'static str, &'static str)]) -> SubscriberBuilder<N, E, F, W>
+        where
+            N: for<'writer> FormatFields<'writer> + 'static,
+            W: for<'writer> MakeWriter<'writer> + 'static,
+    {
+        SubscriberBuilder {
+            filter: self.filter,
+            inner: self.inner.extra_fields(fields),
+        }
+    }
+
+    /// Sets the [`MakeWriter`] that the subscriber being built will use to write events.
     ///
     /// # Examples
     ///
@@ -1054,17 +1055,17 @@ impl<N, E, F, W> CollectorBuilder<N, E, F, W> {
     ///     .with_writer(io::stderr)
     ///     .init();
     /// ```
-    pub fn with_writer<W2>(self, make_writer: W2) -> CollectorBuilder<N, E, F, W2>
+    pub fn with_writer<W2>(self, make_writer: W2) -> SubscriberBuilder<N, E, F, W2>
     where
         W2: for<'writer> MakeWriter<'writer> + 'static,
     {
-        CollectorBuilder {
+        SubscriberBuilder {
             filter: self.filter,
             inner: self.inner.with_writer(make_writer),
         }
     }
 
-    /// Configures the collector to support [`libtest`'s output capturing][capturing] when used in
+    /// Configures the subscriber to support [`libtest`'s output capturing][capturing] when used in
     /// unit tests.
     ///
     /// See [`TestWriter`] for additional details.
@@ -1076,9 +1077,9 @@ impl<N, E, F, W> CollectorBuilder<N, E, F, W> {
     ///
     /// ```rust
     /// use tracing_subscriber::fmt;
-    /// use tracing::collect;
+    /// use tracing::subscriber;
     ///
-    /// collect::set_default(
+    /// subscriber::set_default(
     ///     fmt()
     ///         .with_test_writer()
     ///         .finish()
@@ -1088,8 +1089,8 @@ impl<N, E, F, W> CollectorBuilder<N, E, F, W> {
     /// [capturing]:
     /// https://doc.rust-lang.org/book/ch11-02-running-tests.html#showing-function-output
     /// [`TestWriter`]: writer::TestWriter
-    pub fn with_test_writer(self) -> CollectorBuilder<N, E, F, TestWriter> {
-        CollectorBuilder {
+    pub fn with_test_writer(self) -> SubscriberBuilder<N, E, F, TestWriter> {
+        SubscriberBuilder {
             filter: self.filter,
             inner: self.inner.with_writer(TestWriter::default()),
         }
@@ -1097,7 +1098,7 @@ impl<N, E, F, W> CollectorBuilder<N, E, F, W> {
 
     /// Updates the event formatter by applying a function to the existing event formatter.
     ///
-    /// This sets the event formatter that the collector being built will use to record fields.
+    /// This sets the event formatter that the subscriber being built will use to record fields.
     ///
     /// # Examples
     ///
@@ -1108,13 +1109,13 @@ impl<N, E, F, W> CollectorBuilder<N, E, F, W> {
     ///     .map_event_format(|e| e.compact())
     ///     .finish();
     /// ```
-    pub fn map_event_format<E2>(self, f: impl FnOnce(E) -> E2) -> CollectorBuilder<N, E2, F, W>
+    pub fn map_event_format<E2>(self, f: impl FnOnce(E) -> E2) -> SubscriberBuilder<N, E2, F, W>
     where
         E2: FormatEvent<Registry, N> + 'static,
         N: for<'writer> FormatFields<'writer> + 'static,
         W: for<'writer> MakeWriter<'writer> + 'static,
     {
-        CollectorBuilder {
+        SubscriberBuilder {
             filter: self.filter,
             inner: self.inner.map_event_format(f),
         }
@@ -1134,11 +1135,11 @@ impl<N, E, F, W> CollectorBuilder<N, E, F, W> {
     ///     .map_fmt_fields(|f| f.debug_alt())
     ///     .finish();
     /// ```
-    pub fn map_fmt_fields<N2>(self, f: impl FnOnce(N) -> N2) -> CollectorBuilder<N2, E, F, W>
+    pub fn map_fmt_fields<N2>(self, f: impl FnOnce(N) -> N2) -> SubscriberBuilder<N2, E, F, W>
     where
         N2: for<'writer> FormatFields<'writer> + 'static,
     {
-        CollectorBuilder {
+        SubscriberBuilder {
             filter: self.filter,
             inner: self.inner.map_fmt_fields(f),
         }
@@ -1157,22 +1158,22 @@ impl<N, E, F, W> CollectorBuilder<N, E, F, W> {
     /// use tracing_subscriber::fmt::{self, writer::MakeWriterExt};
     ///
     /// let stderr = std::io::stderr.with_max_level(Level::WARN);
-    /// let collector = tracing_subscriber::fmt()
+    /// let layer = tracing_subscriber::fmt()
     ///     .map_writer(move |w| stderr.or_else(w))
     ///     .finish();
     /// ```
-    pub fn map_writer<W2>(self, f: impl FnOnce(W) -> W2) -> CollectorBuilder<N, E, F, W2>
+    pub fn map_writer<W2>(self, f: impl FnOnce(W) -> W2) -> SubscriberBuilder<N, E, F, W2>
     where
         W2: for<'writer> MakeWriter<'writer> + 'static,
     {
-        CollectorBuilder {
+        SubscriberBuilder {
             filter: self.filter,
             inner: self.inner.map_writer(f),
         }
     }
 }
 
-/// Install a global tracing collector that listens for events and
+/// Install a global tracing subscriber that listens for events and
 /// filters based on the value of the [`RUST_LOG` environment variable],
 /// if one is not already set.
 ///
@@ -1191,42 +1192,76 @@ impl<N, E, F, W> CollectorBuilder<N, E, F, W> {
 /// # Errors
 ///
 /// Returns an Error if the initialization was unsuccessful,
-/// likely because a global collector was already installed by another
+/// likely because a global subscriber was already installed by another
 /// call to `try_init`.
 ///
 /// [`LogTracer`]:
 ///     https://docs.rs/tracing-log/0.1.0/tracing_log/struct.LogTracer.html
-/// [`RUST_LOG` environment variable]:
-///     ../filter/struct.EnvFilter.html#associatedconstant.DEFAULT_ENV
+/// [`RUST_LOG` environment variable]: crate::filter::EnvFilter::DEFAULT_ENV
 pub fn try_init() -> Result<(), Box<dyn Error + Send + Sync + 'static>> {
-    let builder = Collector::builder();
+    let builder = Subscriber::builder();
 
     #[cfg(feature = "env-filter")]
     let builder = builder.with_env_filter(crate::EnvFilter::from_default_env());
 
-    builder.try_init()
+    // If `env-filter` is disabled, remove the default max level filter from the
+    // subscriber; it will be added to the `Targets` filter instead if no filter
+    // is set in `RUST_LOG`.
+    // Replacing the default `LevelFilter` with an `EnvFilter` would imply this,
+    // but we can't replace the builder's filter with a `Targets` filter yet.
+    #[cfg(not(feature = "env-filter"))]
+    let builder = builder.with_max_level(LevelFilter::TRACE);
+
+    let subscriber = builder.finish();
+    #[cfg(not(feature = "env-filter"))]
+    let subscriber = {
+        use crate::{filter::Targets, layer::SubscriberExt};
+        use std::{env, str::FromStr};
+        let targets = match env::var("RUST_LOG") {
+            Ok(var) => Targets::from_str(&var)
+                .map_err(|e| {
+                    eprintln!("Ignoring `RUST_LOG={:?}`: {}", var, e);
+                })
+                .unwrap_or_default(),
+            Err(env::VarError::NotPresent) => {
+                Targets::new().with_default(Subscriber::DEFAULT_MAX_LEVEL)
+            }
+            Err(e) => {
+                eprintln!("Ignoring `RUST_LOG`: {}", e);
+                Targets::new().with_default(Subscriber::DEFAULT_MAX_LEVEL)
+            }
+        };
+        subscriber.with(targets)
+    };
+
+    subscriber.try_init().map_err(Into::into)
 }
 
-/// Install a global tracing collector that listens for events and
+/// Install a global tracing subscriber that listens for events and
 /// filters based on the value of the [`RUST_LOG` environment variable].
+///
+/// The configuration of the subscriber initialized by this function
+/// depends on what [feature flags](crate#feature-flags) are enabled.
 ///
 /// If the `tracing-log` feature is enabled, this will also install
 /// the LogTracer to convert `Log` records into `tracing` `Event`s.
 ///
-/// This is shorthand for
+/// If the `env-filter` feature is enabled, this is shorthand for
 ///
 /// ```rust
-/// tracing_subscriber::fmt().init()
+/// # use tracing_subscriber::EnvFilter;
+/// tracing_subscriber::fmt()
+///     .with_env_filter(EnvFilter::from_default_env())
+///     .init();
 /// ```
 ///
 /// # Panics
 /// Panics if the initialization was unsuccessful, likely because a
-/// global collector was already installed by another call to `try_init`.
+/// global subscriber was already installed by another call to `try_init`.
 ///
-/// [`RUST_LOG` environment variable]:
-///     ../filter/struct.EnvFilter.html#associatedconstant.DEFAULT_ENV
+/// [`RUST_LOG` environment variable]: crate::filter::EnvFilter::DEFAULT_ENV
 pub fn init() {
-    try_init().expect("Unable to install global collector")
+    try_init().expect("Unable to install global subscriber")
 }
 
 #[cfg(test)]
@@ -1237,14 +1272,14 @@ mod test {
             format::{self, Format},
             time,
             writer::MakeWriter,
-            Collector,
+            Subscriber,
         },
     };
     use std::{
         io,
         sync::{Arc, Mutex, MutexGuard, TryLockError},
     };
-    use tracing_core::dispatch::Dispatch;
+    use tracing_core::dispatcher::Dispatch;
 
     pub(crate) struct MockWriter {
         buf: Arc<Mutex<Vec<u8>>>,
@@ -1316,28 +1351,28 @@ mod test {
     #[test]
     fn impls() {
         let f = Format::default().with_timer(time::Uptime::default());
-        let subscriber = Collector::builder().event_format(f).finish();
+        let subscriber = Subscriber::builder().event_format(f).finish();
         let _dispatch = Dispatch::new(subscriber);
 
         let f = format::Format::default();
-        let subscriber = Collector::builder().event_format(f).finish();
+        let subscriber = Subscriber::builder().event_format(f).finish();
         let _dispatch = Dispatch::new(subscriber);
 
         let f = format::Format::default().compact();
-        let subscriber = Collector::builder().event_format(f).finish();
+        let subscriber = Subscriber::builder().event_format(f).finish();
         let _dispatch = Dispatch::new(subscriber);
     }
 
     #[test]
     fn subscriber_downcasts() {
-        let subscriber = Collector::builder().finish();
+        let subscriber = Subscriber::builder().finish();
         let dispatch = Dispatch::new(subscriber);
-        assert!(dispatch.downcast_ref::<Collector>().is_some());
+        assert!(dispatch.downcast_ref::<Subscriber>().is_some());
     }
 
     #[test]
     fn subscriber_downcasts_to_parts() {
-        let subscriber = Collector::new();
+        let subscriber = Subscriber::new();
         let dispatch = Dispatch::new(subscriber);
         assert!(dispatch.downcast_ref::<format::DefaultFields>().is_some());
         assert!(dispatch.downcast_ref::<LevelFilter>().is_some());
@@ -1347,7 +1382,7 @@ mod test {
     #[test]
     fn is_lookup_span() {
         fn assert_lookup_span<T: for<'a> crate::registry::LookupSpan<'a>>(_: T) {}
-        let subscriber = Collector::new();
+        let subscriber = Subscriber::new();
         assert_lookup_span(subscriber)
     }
 }
